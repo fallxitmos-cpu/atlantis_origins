@@ -1,0 +1,12 @@
+{
+  "type": "neoforge:add_spawns",
+  "biomes": "#minecraft:is_ocean",
+  "spawners": [
+    {
+      "type": "atlantis_origins:krill_swarm",
+      "weight": 12,
+      "minCount": 4,
+      "maxCount": 8
+    }
+  ]
+}

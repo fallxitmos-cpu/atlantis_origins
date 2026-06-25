@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "   ",
+    "SOS",
+    "   "
+  ],
+  "key": {
+    "S": {
+      "item": "minecraft:stone_bricks"
+    },
+    "O": {
+      "item": "atlantis_origins:orichalcum_ingot"
+    }
+  },
+  "result": {
+    "id": "atlantis_origins:poseidon_relief"
+  }
+}

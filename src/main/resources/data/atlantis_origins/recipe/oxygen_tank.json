@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    "ACA",
+    "A A",
+    "AAA"
+  ],
+  "key": {
+    "A": {"item": "atlantis_origins:cuprite_ingot"},
+    "C": {"item": "atlantis_origins:rubber"}
+  },
+  "result": {
+    "id": "atlantis_origins:oxygen_tank",
+    "count": 1
+  }
+}

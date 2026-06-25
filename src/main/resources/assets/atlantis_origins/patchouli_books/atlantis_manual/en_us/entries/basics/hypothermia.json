@@ -1,0 +1,11 @@
+{
+  "name": "Hypothermia",
+  "icon": "minecraft:blue_ice",
+  "category": "atlantis_origins:basics",
+  "pages": [
+    {
+      "type": "patchouli:text",
+      "text": "Cold ocean biomes drain your body heat. Frozen oceans are the worst, while warm oceans are relatively safe.$(br2)Once hypothermia reaches its threshold you will take damage over time. Leaving the water or entering a warmer biome slowly reverses the effect."
+    }
+  ]
+}

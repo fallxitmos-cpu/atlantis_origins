@@ -1,0 +1,16 @@
+{
+  "replace": false,
+  "values": [
+    "atlantis_origins:orichalcum_ore",
+    "atlantis_origins:cuprite_ore",
+    "atlantis_origins:brimstone_ore",
+    "atlantis_origins:salt_ore",
+    "atlantis_origins:silver_amalgam_block",
+    "atlantis_origins:silver_ore",
+    "atlantis_origins:deepslate_silver_ore",
+    "atlantis_origins:liquid_injection_chamber",
+    "atlantis_origins:separation_tower",
+    "atlantis_origins:catalytic_reactor",
+    "atlantis_origins:poseidon_relief"
+  ]
+}

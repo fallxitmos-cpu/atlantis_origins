@@ -1,0 +1,13 @@
+{
+  "type": "atlantis_origins:alchemical_reactor",
+  "ingredients": [
+    {"item": "minecraft:copper_ingot"},
+    {"item": "atlantis_origins:brimstone_dust"},
+    {"item": "minecraft:amethyst_shard"},
+    {"item": "minecraft:blaze_powder"}
+  ],
+  "result": {
+    "id": "atlantis_origins:cuprite_ingot",
+    "count": 1
+  }
+}

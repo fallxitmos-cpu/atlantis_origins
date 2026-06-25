@@ -1,0 +1,21 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "BAB",
+    "BAB",
+    "BBB"
+  ],
+  "key": {
+    "A": {
+      "item": "minecraft:glass"
+    },
+    "B": {
+      "item": "atlantis_origins:cuprite_ingot"
+    }
+  },
+  "result": {
+    "id": "atlantis_origins:liquid_injection_chamber",
+    "count": 1
+  }
+}

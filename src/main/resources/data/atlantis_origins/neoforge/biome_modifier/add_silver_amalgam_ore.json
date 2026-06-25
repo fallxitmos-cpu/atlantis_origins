@@ -1,0 +1,6 @@
+{
+  "type": "neoforge:add_features",
+  "biomes": "#atlantis_origins:silver_amalgam_biomes",
+  "features": "atlantis_origins:ore_silver_amalgam",
+  "step": "underground_ores"
+}

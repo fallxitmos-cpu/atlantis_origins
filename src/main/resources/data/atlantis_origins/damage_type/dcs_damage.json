@@ -1,0 +1,6 @@
+{
+  "message_id": "atlantis_origins.dcs_damage",
+  "exhaustion": 0.1,
+  "scaling": "never",
+  "effects": "hurt"
+}

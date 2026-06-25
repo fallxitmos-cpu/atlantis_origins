@@ -1,0 +1,11 @@
+{
+  "name": "Deep Sea Lamp",
+  "icon": "atlantis_origins:deep_sea_lamp",
+  "category": "atlantis_origins:equipment",
+  "pages": [
+    {
+      "type": "patchouli:text",
+      "text": "The Deep Sea Lamp is a portable light source that can also be placed as a decorative block.$(br2)While held underwater it emits a mobile light source around the diver. If a dynamic-light mod such as LambDynamicLights is installed, the built-in light is disabled and the mod handles illumination instead."
+    }
+  ]
+}

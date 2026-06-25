@@ -1,0 +1,27 @@
+{
+  "display": {
+    "icon": {
+      "id": "atlantis_origins:hyperbaric_chamber"
+    },
+    "title": {
+      "translate": "advancements.atlantis_origins.cure_dcs.title"
+    },
+    "description": {
+      "translate": "advancements.atlantis_origins.cure_dcs.description"
+    },
+    "frame": "challenge",
+    "show_toast": true,
+    "announce_to_chat": true
+  },
+  "parent": "atlantis_origins:root",
+  "criteria": {
+    "cure_dcs": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "requirements": [
+    [
+      "cure_dcs"
+    ]
+  ]
+}

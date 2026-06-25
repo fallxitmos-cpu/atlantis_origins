@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    {
+      "item": "atlantis_origins:silver_nugget"
+    },
+    {
+      "item": "atlantis_origins:silver_nugget"
+    },
+    {
+      "item": "atlantis_origins:silver_nugget"
+    },
+    {
+      "item": "atlantis_origins:silver_nugget"
+    }
+  ],
+  "result": {
+    "id": "atlantis_origins:silver_ingot"
+  }
+}

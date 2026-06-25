@@ -1,0 +1,28 @@
+{
+  "display": {
+    "icon": {
+      "id": "atlantis_origins:orichalcum_pickaxe"
+    },
+    "title": {
+      "translate": "advancements.atlantis_origins.survive_horror.title"
+    },
+    "description": {
+      "translate": "advancements.atlantis_origins.survive_horror.description"
+    },
+    "frame": "challenge",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": true
+  },
+  "parent": "atlantis_origins:abyss_walker",
+  "criteria": {
+    "horror": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "requirements": [
+    [
+      "horror"
+    ]
+  ]
+}

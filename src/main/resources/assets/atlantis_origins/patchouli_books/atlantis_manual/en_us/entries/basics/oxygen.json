@@ -1,0 +1,11 @@
+{
+  "name": "Oxygen",
+  "icon": "atlantis_origins:oxygen_tank",
+  "category": "atlantis_origins:basics",
+  "pages": [
+    {
+      "type": "patchouli:text",
+      "text": "Diving without air is suicide. Equip an Oxygen Tank in the dedicated Curios slot and keep an eye on your oxygen percentage above the air bar.$(br2)Oxygen is consumed while your head is underwater and refills over a few seconds once you surface. Water breathing potions cannot be used while a tank is equipped."
+    }
+  ]
+}

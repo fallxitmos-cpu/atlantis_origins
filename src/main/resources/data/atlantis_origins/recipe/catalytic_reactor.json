@@ -1,0 +1,27 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "DAD",
+    "DCD",
+    "DBD"
+  ],
+  "key": {
+    "A": {
+      "item": "atlantis_origins:alchemical_reactor"
+    },
+    "B": {
+      "item": "minecraft:blaze_powder"
+    },
+    "C": {
+      "item": "atlantis_origins:brimstone_dust"
+    },
+    "D": {
+      "item": "atlantis_origins:orichalcum_ingot"
+    }
+  },
+  "result": {
+    "id": "atlantis_origins:catalytic_reactor",
+    "count": 1
+  }
+}

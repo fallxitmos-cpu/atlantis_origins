@@ -1,0 +1,11 @@
+{
+  "name": "Oxygen Tank",
+  "icon": "atlantis_origins:oxygen_tank",
+  "category": "atlantis_origins:equipment",
+  "pages": [
+    {
+      "type": "patchouli:text",
+      "text": "The Oxygen Tank fits into its own Curios slot. It stores a large amount of oxygen and refills your vanilla air bar while it has charge remaining.$(br2)Keep it topped up at the surface, because running dry means relying on what little air your lungs can hold."
+    }
+  ]
+}

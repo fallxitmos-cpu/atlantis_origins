@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/handheld",
+  "textures": {
+    "layer0": "atlantis_origins:item/orichalcum_pickaxe"
+  }
+}

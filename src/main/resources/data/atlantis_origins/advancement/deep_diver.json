@@ -1,0 +1,48 @@
+{
+  "display": {
+    "icon": {
+      "id": "atlantis_origins:deep_sea_lamp"
+    },
+    "title": {
+      "translate": "advancements.atlantis_origins.deep_diver.title"
+    },
+    "description": {
+      "translate": "advancements.atlantis_origins.deep_diver.description"
+    },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": true
+  },
+  "parent": "atlantis_origins:root",
+  "criteria": {
+    "below_y_20": {
+      "trigger": "minecraft:location",
+      "conditions": {
+        "player": [
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "location": {
+                "position": {
+                  "y": {
+                    "max": 20.0
+                  }
+                }
+              },
+              "flags": {
+                "is_swimming": true
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "requirements": [
+    [
+      "below_y_20"
+    ]
+  ]
+}

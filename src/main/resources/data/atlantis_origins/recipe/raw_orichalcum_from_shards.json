@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "###",
+    "###",
+    "###"
+  ],
+  "key": {
+    "#": {
+      "item": "atlantis_origins:orichalcum_shard"
+    }
+  },
+  "result": {
+    "count": 1,
+    "id": "atlantis_origins:raw_orichalcum"
+  }
+}

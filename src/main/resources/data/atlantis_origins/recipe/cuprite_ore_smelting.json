@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:smelting",
+  "cookingtime": 200,
+  "experience": 0.7,
+  "ingredient": {
+    "item": "atlantis_origins:cuprite_ore"
+  },
+  "result": {
+    "id": "atlantis_origins:cuprite_ingot"
+  }
+}

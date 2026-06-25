@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {"tag": "minecraft:coals"}
+  ],
+  "result": {
+    "id": "atlantis_origins:carbon_black",
+    "count": 4
+  }
+}

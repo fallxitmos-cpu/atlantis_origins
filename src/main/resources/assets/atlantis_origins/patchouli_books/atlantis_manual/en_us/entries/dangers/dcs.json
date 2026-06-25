@@ -1,0 +1,11 @@
+{
+  "name": "Decompression Sickness",
+  "icon": "atlantis_origins:hyperbaric_chamber",
+  "category": "atlantis_origins:dangers",
+  "pages": [
+    {
+      "type": "patchouli:text",
+      "text": "Rising too quickly from the depths can cause decompression sickness. Mild cases slow you down and fade after a time; severe cases deal increasing damage based on your movement speed and amplify other injuries.$(br2)DCS is disabled by default and can be toggled in the config."
+    }
+  ]
+}

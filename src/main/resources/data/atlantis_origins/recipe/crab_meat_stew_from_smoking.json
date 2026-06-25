@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:smoking",
+  "cookingtime": 100,
+  "experience": 0.35,
+  "ingredient": {
+    "item": "atlantis_origins:raw_crab_meat"
+  },
+  "result": {
+    "id": "atlantis_origins:crab_meat_stew"
+  }
+}

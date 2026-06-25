@@ -1,0 +1,11 @@
+{
+  "name": "Hyperbaric Pump",
+  "icon": "atlantis_origins:hyperbaric_chamber",
+  "category": "atlantis_origins:dangers",
+  "pages": [
+    {
+      "type": "patchouli:text",
+      "text": "A Hyperbaric Pump cures decompression sickness. Right-click while holding it to remove any active DCS stage or pending mild case. Keep one handy after rapid ascents from the depths."
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    {
+      "item": "minecraft:bowl"
+    },
+    {
+      "item": "atlantis_origins:raw_crab_meat"
+    },
+    {
+      "item": "atlantis_origins:raw_eel"
+    },
+    {
+      "item": "atlantis_origins:deep_sea_kelp"
+    },
+    {
+      "item": "atlantis_origins:raw_salt"
+    }
+  ],
+  "result": {
+    "count": 1,
+    "id": "atlantis_origins:deep_sea_stew"
+  }
+}

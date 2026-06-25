@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    {
+      "item": "atlantis_origins:krill"
+    }
+  ],
+  "result": {
+    "count": 1,
+    "id": "atlantis_origins:krill_paste"
+  }
+}

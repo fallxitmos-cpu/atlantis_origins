@@ -1,0 +1,1479 @@
+=== ATLANTIS SKILL v1.7 (EXECUTABLE DRAFT) ===
+PROJECT: atlantis_origins
+PLATFORM: NeoForge 1.21.1
+PACKAGE: com.samplecat.atlantisorigins
+MAIN CLASS: AtlantisOrigins.java (@Mod("atlantis_origins"))
+AUTHOR: [你的名字]
+
+=== REGISTRY RULES ===
+- 所有注册使用 DeferredRegister
+- 注册名必须加前缀 "atlantis_origins:"
+- 类名 PascalCase, 注册名 snake_case
+- 静态初始化模式
+- 主 Mod 类需标注 @Mod("atlantis_origins")
+
+=== PACKAGE STRUCTURE ===
+com.samplecat.atlantisorigins
+- AtlantisOrigins.java (主类, @Mod("atlantis_origins"))
+- client/ClientSetup.java (客户端注册)
+- client/model/ (自定义实体模型：深渊水母)
+- client/render/ (屏幕特效渲染层：暗角、血丝、黑白化、饱和度)
+- common/attachment/ModAttachments.java (DataAttachment)
+- common/item/ModItems.java (物品注册)
+- common/item/OrichalcumTier.java (自定义工具 tier)
+- common/item/OrichalcumArmorMaterial.java / BeginnerDivingArmorMaterial.java (自定义盔甲材质)
+- common/item/OrichalcumPickaxeItem.java / OrichalcumAxeItem.java / OrichalcumShovelItem.java / OrichalcumHoeItem.java (山铜工具)
+- common/item/OrichalcumArmorItem.java / BeginnerDivingSuitItem.java / BeginnerDivingPantsItem.java (山铜/潜水盔甲)
+- common/item/GogglesItem.java (泳镜 Curios 饰品)
+- common/block/ModBlocks.java (方块注册)
+- common/blockentity/ (方块实体注册)
+- common/entity/ModEntities.java (实体注册)
+- common/network/ModNetwork.java (网络包注册)
+- common/effect/ModMobEffects.java (隐藏状态效果注册)
+- common/damage/ModDamageTypes.java (伤害类型注册)
+- common/advancement/ModAdvancements.java (进度触发器)
+- common/curios/ (Curios 槽位注册与集成)
+- common/config/ (配置系统)
+- common/world/feature/ (自定义世界生成 Feature，如硫磺矿)
+- data/ (数据生成)
+
+=== MANDATORY DEPENDENCIES ===
+- Curios API（NeoForge 1.21.1）——强制前置，无则模组不加载
+- Patchouli（帕秋莉手册）——可选/软前置
+
+=== OPTIONAL DEPENDENCIES ===
+- LambDynamicLights ——若内置移动光源实现复杂，则作为深海灯软前置
+
+=== DATA ATTACHMENT PATTERN ===
+public static final Supplier<AttachmentType<Integer>> PLAYER_OXYGEN = REGISTRY.register(
+    "player_oxygen",
+    () -> AttachmentType.builder(() -> 300).build()
+);
+
+=== NETWORK PACKET PATTERN ===
+public record OxygenSyncPacket(int oxygen) implements CustomPayload {
+    public static final Type<OxygenSyncPacket> TYPE = new Type<>(
+        ResourceLocation.fromNamespaceAndPath("atlantis_origins", "oxygen_sync")
+    );
+    public static final StreamCodec<ByteBuf, OxygenSyncPacket> STREAM_CODEC =
+        StreamCodec.composite(ByteBufCodecs.VAR_INT, OxygenSyncPacket::oxygen, OxygenSyncPacket::new);
+    @Override public Type<OxygenSyncPacket> type() { return TYPE; }
+}
+
+=== CURIOS INTEGRATION ===
+- 强制前置 Curios API
+- 注册专属槽位：
+  - curios:oxygen_tank（显示名“氧气瓶”）
+  - curios:goggles（显示名“泳镜”）
+- 氧气瓶仅允许装备 1 件，且只能放入 oxygen_tank 槽位
+- 泳镜仅允许装备 1 件，且只能放入 goggles 槽位
+- 氧气瓶与泳镜均实现 ICurioItem 接口
+- 提供氧气值读取接口供命令或其他模组使用
+
+=== OXYGEN SYSTEM ===
+- 沿用原版氧气条（bubble 条）作为底层机制
+- 额外在 UI 渲染一行气瓶剩余含氧量百分比
+- 氧气瓶采用无耐久形式，仅记录剩余氧气量（上限 300 单位，可用 float）
+- 消耗顺序：
+  1. 优先消耗氧气瓶氧气
+  2. 氧气瓶氧气低于 1% 时开始消耗原版氧气条
+  3. 氧气瓶氧气实际不会归零，最低停留在 1
+- 头部浮出水面后，氧气瓶氧气在 3 秒内逐渐恢复至满
+- 氧气瓶仅可装备于 Curios oxygen_tank 槽位，不可同时装备多件
+- 装备氧气瓶时直接禁用原版水下呼吸类药水效果；尝试服用时返还药水并提示玩家
+- 氧气瓶呼吸机制：每 40 tick 进行一次呼吸，消耗 1 单位氧气
+  - 2.5% 概率回收 0.125 单位氧气
+  - 0.25% 概率回收 0.75 单位氧气
+  - Y<0 时消耗为正常的 110%（需用累加器处理小数）
+  - 未来计划加入独立呼吸音效
+
+=== PRESSURE SYSTEM (四段式，仅海洋群系水下生效) ===
+生效前提：
+- 玩家位于海洋类生物群系（is_ocean 标签 或 生物群系 ID 含 "ocean"）
+- 玩家碰撞箱完全浸入水中
+- 玩家头顶一格方块为水
+- 扫描玩家前方 5 格、身后 5 格、脚下 10 格、头顶 10 格围成的区域；要求该区域内垂直方向至少有 10 个水源方块、前后方向至少有 5 个水源方块
+- 气泡柱内部判定为正常大气压（不受压强影响）
+
+阶段：
+- Y > 45：无任何额外效果
+- 45 >= Y > 30："压迫" 状态
+  - 屏幕暗角（vignette）加深
+  - 自定义血丝覆盖层（可与原版低血量边框叠加）
+  - 两套贴图：原版红色血丝 / 和谐版
+  - 不造成伤害
+- 30 >= Y > 10："过压" 状态
+  - 每 2 秒造成 1 点真实伤害
+- Y <= 10："超压" 状态
+  - 每 10 tick 造成 2.5 点真实伤害
+  - 给予 "恐惧" 效果
+  - "恐惧" 效果附加：游泳速度 +10%、饱食度消耗 1.2 倍、暗角进一步加深、画面饱和度降低、间歇性失明（按随机刻减半概率出现，作为早期版本重影的降级替代）
+
+=== PRESSURE / EFFECT FADE-OUT ===
+- 玩家离开对应深度/环境后，该深度的伤害立即停止
+- 视觉与状态效果线性衰减，在 5 秒内（100 tick）逐渐停止/消退
+- 效果不显示在玩家 HUD 效果列表中
+- 离开海洋群系或浮出水面同样触发淡出
+- 多压力区同时满足时，每 tick 只取最高阶段效果
+
+=== HYPOTHERMIA (失温) ===
+触发条件（需同时满足）：
+- 玩家碰撞箱完全浸入水中
+- 玩家头顶一格方块为水
+- 处于海洋类生物群系
+- 累计暴露达到对应 tick 数
+
+基础阈值（按群系温度）：
+- 冻洋（frozen_ocean / deep_frozen_ocean）：1000 tick
+- 冷水海洋（cold_ocean / deep_cold_ocean）：3000 tick
+- 温水海洋（lukewarm_ocean / deep_lukewarm_ocean）：6000 tick
+- 暖海（warm_ocean）：20000 tick
+
+深度修正：
+- Y < 30 时阈值额外降低 500 tick
+- 暖海 Y < 30 时阈值额外降低 250 tick
+
+装备修正：
+- 同时穿戴初学者潜水服与潜水裤时，阈值提高 20%
+
+效果：
+- 视觉：屏幕冰霜覆盖（freeze ticks）
+- 相机随机抖动（客户端 ComputeCameraAngles）
+- 每 2 秒造成 1 点真实伤害
+- 允许饱和度回血抵消
+离开海水或回到非海洋群系后，累计值以 10 tick/次 快速衰减，效果淡出
+
+=== DECOMPRESSION SICKNESS (减压症) ===
+- 默认关闭，可通过配置开启
+- 触发条件（开启时）：
+  - 快速上浮定义：每秒上升 >= 12 格
+  - Y < 0 时快速上浮：重症减压症
+  - Y > 0 时快速上浮：轻症减压症，上岸后 5 秒内触发，50 秒内结束
+  - 使用气囊上浮算作快速上浮，会触发 DCS 判定但不扣血（仅触发判定）
+- 效果：持续减速
+- 伤害：
+  - 每 40 tick 造成等于当前移动速度值的真实伤害
+  - 同时玩家受到的非 DCS 伤害增加 (移动速度 × 50%)
+  - 任意连续 50 tick 内，DCS 造成的伤害上限为 5.5 点
+- 治疗：使用高压气泵物品可立即消除任意阶段减压症
+- 第一次触发解锁隐藏成就/进度："减压症"
+- 第一次触发重症解锁挑战成就/进度："重症减压症"（紫色框 + 聊天框广播，需配置开启）
+
+=== MOB EFFECTS ===
+- 所有效果不显示在玩家 HUD 效果列表中
+- 使用隐藏的 MobEffect（A 方案，更节省性能）
+- 属性修改通过 MobEffect attribute modifier 实现
+- atlantis_origins:oppression （压迫）
+- atlantis_origins:overpressure （过压）
+- atlantis_origins:horror （恐惧）
+- atlantis_origins:hypothermia （失温）
+- atlantis_origins:decompression_sickness （减压症）
+
+=== DAMAGE TYPES TO REGISTER ===
+- atlantis_origins:true_damage （真实伤害）
+  - bypassArmor = true
+  - bypassMagic = true
+  - 保留伤害吸收（Absorption）生效
+  - 所有无法减免伤害统称真实伤害
+  - 图腾类死亡豁免均生效
+
+=== ADVANCEMENTS ===
+
+==== 普通成就（可见，引导探索） ====
+- 真舒坦不是吗？：第一次完全浸入水中
+- 潜水新手：第一次装备氧气瓶
+- 起飞！：第一次使用气囊
+- 第一宇宙速度：第一次使用气囊上升 25 格
+- 海洋，不过如此：第一次下潜至 Y=20
+- 我还活着。吗？：第一次下潜至 Y=0
+- 深海行者：在 Y<0 海洋连续停留 5 分钟
+- 氧气管理大师：氧气瓶氧气在 1% 时上浮并回满
+- 点亮深渊：手持深海灯到达 Y<0
+- 深海守护者杀手：击杀深海守护者
+
+==== 隐藏成就（绿色框 + 聊天栏广播） ====
+- 深海恐惧症：第一次触发恐惧效果（绿色框 + 聊天栏广播）
+- 加层保暖：第一次触发失温效果（绿色框 + 聊天栏广播）
+- 我感觉有点喘不上气：第一次触发压迫效果（绿色框 + 聊天栏广播）
+- 我好像被什么东西握在手里：第一次触发过压效果（绿色框 + 聊天栏广播）
+- 回收利用：第一次因呼吸回收 0.25 单位氧气（绿色框 + 聊天栏广播）
+- 减压症：第一次触发减压症（绿色框 + 聊天栏广播，需配置开启）
+- 气泡柱避难所：在气泡柱中躲避压强伤害（绿色框 + 聊天栏广播）
+- 冷到骨子里：在冻洋触发失温（绿色框 + 聊天栏广播）
+- 快进来！：DCS 触发后 10 秒内进入高压氧舱（绿色框 + 聊天栏广播）
+
+==== 挑战成就（紫色框） ====
+- 不充分吸氧：第一次因呼吸回收 0.75 单位氧气
+- 压强过载：第一次触发超压效果（紫色框 + 聊天框广播）
+- 重症减压症：第一次触发重症减压症（紫色框 + 聊天框广播，需配置开启）
+- 我还活着......可：第一次下潜至 Y=-5 并顺利上浮（紫色框 + 聊天框广播）
+- 无伤深潜：在 Y<0 停留 10 分钟不受伤害
+- 极限回收：连续 5 次呼吸都回收氧气
+
+=== RENDERING EFFECTS (客户端) ===
+- 气瓶氧气百分比 HUD：客户端独立计算，每 10 tick 与服务端同步
+- 压迫阶段：vignette 暗角
+- 过压阶段：vignette + 血屏覆盖层，支持 RED / HARMONIZED / BLACK_WHITE / OFF 四种模式
+- 超压阶段：灰度覆盖 + 饱和增强覆盖 + 间歇性黑屏脉冲（早期版本重影的降级替代）
+- 实现方式：RegisterGuiLayersEvent + LayeredDraw.Layer，注册在 CROSSHAIR 之下，避免覆盖原版 UI
+- 压迫阶段 vignette 使用 256×256 透明中心纹理，通过 PoseStack 缩放铺满全屏，四角变暗
+- 数据来源：ClientNetworkCache.pressureStage 与 effectIntensity（由 PressureSyncPacket 同步）
+- 真·灰度/饱和度调整需 shader post-processing；当前版本使用半透明覆盖层近似
+- 屏幕特效位于原版 HUD 之下，不遮挡快捷栏、血条、饥饿条等 UI
+
+=== ITEMS ===
+- oxygen_tank （氧气瓶）
+  - 仅可装备于 Curios oxygen_tank 槽位
+  - 无耐久，记录剩余氧气量（上限 300）
+  - 水下消耗氧气，浮出水面恢复
+  - 合成方式待定，使用工作台合成
+- flipper （脚蹼）
+  - 完全忽略水中阻力（WATER_MOVEMENT_EFFICIENCY +1.0）
+  - 提升 120% 游泳速度（SWIM_SPEED +1.2）
+- deep_sea_lamp （深海灯）
+  - 可放置的发光方块，光照等级 15，硬度 2.0F
+  - 同时作为玩家手持移动光源：手持深海灯且眼睛在水中时，服务端在玩家眼睛位置放置 diving_light_source
+  - 玩家移动后旧位置光源被移除；眼睛出水、未手持、配置关闭或安装 LambDynamicLights 时也会移除
+  - diving_light_source 特性：无碰撞、不可见、可替换、支持 waterlogged、光照等级 15、无掉落物、瞬间可破坏
+  - 该方块每 20 tick 自检一次，若 3 格内没有玩家手持深海灯则自动移除
+  - 若安装 LambDynamicLights，自动禁用内置光源，交由动态光源模组处理
+- raw_cuprite / cuprite_ingot （粗紫铜 / 紫铜锭）
+  - 紫铜矿冶炼产物，独立材料体系
+- raw_orichalcum / orichalcum_ingot （粗山铜 / 山铜锭）
+  - 山铜矿冶炼产物，独立材料体系
+- sulfur_dust （硫磺粉）
+  - 硫磺矿掉落物，每次 2 个，受时运影响
+- orichalcum_pickaxe / orichalcum_axe / orichalcum_shovel / orichalcum_hoe （山铜镐/斧/锹/锄）
+  - 由压缩镐重构为山铜镐，新增斧、锹、锄三件套
+  - 等效下界合金工具 + 效率 II（挖掘速度 14）
+  - 耐久等效下界合金 + 耐久 II（6093）
+  - 伤害比下界合金同类型工具高 1 点（镐 6 / 斧 10 / 锹 6.5 / 锄 1）
+  - 山铜镐对压缩空气块挖掘速度再翻倍
+  - 压缩空气块仅在被山铜镐破坏时掉落自身
+  - 修复材料：山铜锭
+- orichalcum_trident （山铜三叉戟）
+  - 11 点攻击伤害（原版三叉戟 8 点）
+  - 耐久等效下界合金 + 耐久 II（6093）
+  - 首次获得时自动附魔忠诚 III 与激流 III
+  - 投掷/激流逻辑与原版三叉戟一致
+  - 合成：3 山铜锭 + 1 山铜棍
+- orichalcum_stick （山铜棍）
+  - 2 个山铜锭竖放合成 4 根，作为山铜工具手柄
+- orichalcum_helmet / orichalcum_chestplate / orichalcum_leggings / orichalcum_boots （山铜盔甲）
+  - 防御与韧性等效下界合金盔甲
+  - 耐久等效下界合金 + 耐久 II（耐久系数 111 = 下界合金 37 × 3）
+  - 首次进入物品栏时自动附上保护 III
+  - 修复材料：山铜锭
+- beginner_diving_suit / beginner_diving_pants （初学者潜水服/潜水裤）
+  - 两件套，防御与耐久均等效皮革套装（胸甲 3/80，护腿 2/75）
+  - 同时穿戴时，失温阈值提高 20%
+  - 合成材料：皮革
+- goggles （泳镜）
+  - Curios 饰品槽 goggles
+  - 装备后在水下取消浸没迷雾，恢复清晰视野
+  - 合成材料：玻璃 + 皮革
+- hyperbaric_chamber （高压气泵）
+  - 物品，右键使用即可治愈当前任意阶段的减压症
+  - 清除 DCS stage、timer、pending mild 与 freeze ticks
+  - 触发 cure_dcs 进度
+
+=== BLOCKS ===
+- deep_sea_lamp （深海灯）
+  - 可放置的发光方块，lightLevel 15, strength 2.0F
+  - 手持并浸入水中时作为移动光源（见 ITEMS 部分）
+- cuprite_ore （紫铜矿）
+  - 铜矿变体，与铜矿同区域生成，替换比例约 60%
+  - 掉落粗紫铜，冶炼为紫铜锭
+  - 纹理复用原版 copper_ore.png
+- orichalcum_ore （山铜矿）
+  - 深层铜矿变体，与深层铜矿同区域生成，替换比例约 90%
+  - 掉落粗山铜，冶炼为山铜锭
+  - 需要钻石镐或更高等级工具才能掉落
+  - 纹理复用原版 deepslate_copper_ore.png
+- sulfur_ore （硫磺矿）
+  - 任意群系生成，仅在自然岩浆附近 3×3×3 范围内生成
+  - 矿脉最大连续 30 方块
+  - 木镐以上可采集，掉落 2 个硫磺粉（受时运影响）
+
+=== ENTITIES ===
+- abyssal_jellyfish （深渊水母）
+  - 被动生物，继承 Squid 以复用 AI 与基础行为
+  - 使用自定义 Blockbench 模型（AbyssalJellyfishModel），继承 HierarchicalModel
+  - 独立纹理 + _e 发光纹理叠加层
+  - 已注册属性、生成位置与刷怪蛋
+  - 在水中生成
+- glowing_school （发光鱼群）
+  - 被动生物（计划中）
+  - 仅使用发光贴图，不产生实际光照
+  - 可能掉落物品
+- deep_guardian （深海守护者）
+  - 敌对生物（计划中）
+  - 仅在 Y < 0 的海洋生成
+
+=== WORLDGEN / MINERALS ===
+- 紫铜矿（cuprite_ore）
+  - 覆盖原版 ore_copper_small/large，移除 deepslate target
+  - 新增 ore_cuprite_small/large placed features，count=10（small + large）
+  - 原版铜矿 placed feature count 降至 6+6，实现约 60% 替换率
+  - 战利品：2–5 raw_cuprite，时运加成，精准采集掉原方块
+  - 冶炼：cuprite_ore / raw_cuprite → cuprite_ingot
+- 山铜矿（orichalcum_ore）
+  - 新增 ore_orichalcum_small/large placed features，count=14（small + large）
+  - 仅针对 deepslate_ore_replaceables，实现约 90% 替换率
+  - 战利品：2–5 raw_orichalcum，时运加成，精准采集掉原方块
+  - 冶炼：orichalcum_ore / raw_orichalcum → orichalcum_ingot
+- 硫磺矿（sulfur_ore）
+  - 自定义 SulfurOreFeature（注册于 ModFeatures）
+  - 仅在 3×3×3 范围内存在岩浆时生成，矿脉最大 30 方块
+  - 可替换 stone / deepslate / andesite / diorite / granite / tuff
+  - 战利品：固定 2 sulfur_dust，时运加成，精准采集掉原方块
+- 所有矿物生成通过 neoforge:add_features biome modifier 添加到 #minecraft:is_overworld
+
+=== EVENT HANDLERS ===
+- 氧气消耗与恢复：PlayerTickEvent（服务端）
+- 压强阶段检测与伤害：PlayerTickEvent（服务端）
+- 失温累计与效果：PlayerTickEvent（服务端）
+- 减压症判定：PlayerTickEvent（服务端）
+- 氧气同步：登录 / 每 10 tick 同步 / 变化时同步
+- 客户端渲染：RegisterGuiLayersEvent + ViewportEvent.RenderFog（泳镜去雾）
+
+=== COMMANDS ===
+- /atlantis oxygen get [player] — 任意玩家
+- /atlantis oxygen set <value> [player] — 仅 OP
+- /atlantis depth [player] — 任意玩家
+- /atlantis pressure get [player] — 任意玩家
+- /atlantis hypothermia get [player] — 任意玩家
+
+=== DEPENDENCIES (build.gradle 中需添加) ===
+- Curios API（NeoForge 1.21.1）——强制前置
+- Patchouli（帕秋莉手册）——可选/软前置
+- LambDynamicLights ——潜水灯软前置（若内置移动光源未能实现）
+
+=== VERSIONING RULES ===
+- 基础版本格式：MAJOR.MINOR.PATCH-alpha[-fixN]
+- 添加物品 / 新内容：第三位版本号 PATCH +1，并重置 fix 计数
+  - 例：0.1.3-alpha-fix3 → 0.1.4-alpha
+- 修复 bug：fix 后数字 +1
+  - 例：0.1.3-alpha-fix3 → 0.1.3-alpha-fix4
+- 版本号同步修改 gradle.properties 中的 mod_version
+- 每次版本变更后在 skill.txt 追加 Step 记录
+
+=== CONFIG OPTIONS ===
+- pressure_enabled: 是否启用压强系统
+- hypothermia_enabled: 是否启用失温系统
+- decompression_sickness_enabled: 是否启用减压症（默认 false）
+- oxygen_tank_max_oxygen: 气瓶最大氧气量（默认 300）
+- oxygen_tank_recovery_time_seconds: 浮出水面恢复时间（默认 3 秒）
+- oxygen_consumption_deep_multiplier: 深海消耗倍率（默认 1.1）
+- blood_overlay_mode: 红色血丝 / 和谐版 / 黑白化 / 关闭
+- horror_speed_boost: 恐惧游泳速度加成（默认 0.1）
+- effect_fade_out_ticks: 离开深度后效果消退 tick 数（默认 100，即 5 秒）
+- client_rendering_enabled: 客户端渲染开关（服务端自动关闭）
+- use_builtin_dynamic_light: 是否使用内置移动光源（默认 true，失败则回退 LambDynamicLights）
+
+=== TODO LIST ===
+[x] 主类与注册系统
+[x] DataAttachment 框架（玩家氧气、失温累计、压强阶段、减压症）
+[x] 网络包框架（氧气同步、压强同步）
+[x] Curios 专属氧气瓶槽位注册
+[x] 氧气系统（消耗/恢复/同步/HUD/呼吸回收）
+[x] 压强系统（四段检测/水源扫描/气泡柱豁免/伤害/状态效果）
+[x] 失温系统（按群系温度/深度修正/效果/伤害）
+[x] 减压症系统（可配置默认关闭/快速上浮判定/伤害逻辑/高压氧舱治疗）
+[x] 高压氧舱多方块结构
+[x] 气瓶物品
+[x] 脚蹼物品
+[x] 深海灯移动光源（原潜水灯已删除）
+[x] 压缩镐 + 压缩空气块
+[x] 紫铜矿 / 山铜矿 / 硫磺矿
+[x] 山铜工具四件套（镐/斧/锹/锄）
+[x] 山铜三叉戟
+[x] 山铜棍
+[x] 山铜盔甲四件套
+[x] 初学者潜水套装（两件套）
+[x] 泳镜（Curios 饰品槽 + 水下去雾）
+[x] 深渊水母自定义 Blockbench 模型
+[x] 深渊水母实体
+[x] 发光鱼群
+[ ] 深海守护者
+[x] 客户端屏幕特效（暗角/血丝/灰度/间歇失明/饱和度）
+[x] 配置系统
+[x] 隐藏成就/进度系统
+[x] 帕秋莉手册集成（氧气机制 + 故事线随进度解锁）
+[x] 多语言支持（简体中文 / 法语 / 俄语 / 日语）
+[x] 独立创造模式标签页
+[x] 清理已弃用 API
+[x] 高压氧舱结构验证强化
+
+=== KEYWORDS ===
+生成骨架: 输出完整空模组结构
+生成物品: 输出物品注册+类模板
+生成方块: 输出方块注册+类模板
+生成方块实体: 输出BlockEntity注册
+生成附件: 输出DataAttachment注册
+生成网络包: 输出CustomPayload模板
+生成实体: 输出实体注册+类模板
+生成配方: 输出RecipeProvider代码
+生成模型: 输出BlockState/ItemModel代码
+生成状态效果: 输出MobEffect注册
+生成伤害类型: 输出DamageType注册
+生成Curios槽位: 输出CuriosSlot注册与数据文件
+生成进度: 输出Advancement触发器
+修复构建: 分析错误日志并修复
+更新进度: 询问当前实现状态
+
+=== NOTES ===
+- 所有新代码必须匹配现有包结构 com.samplecat.atlantisorigins
+- 网络包必须双端处理
+- 物品/方块/方块实体/效果/伤害类型/Curios 槽位/进度必须同时生成数据文件
+- 真实伤害：无视护甲与保护附魔，仅伤害吸收可抵挡；图腾类死亡豁免均生效
+- 旁观者免疫所有 buff 与伤害；创造模式免疫伤害但不免疫 buff
+- 压强与失温为海洋群系水下专属 debuff；装备在任何可发挥作用的场景均生效
+- 所有效果不显示在玩家 HUD 效果列表中，采用线性淡出
+- 早期版本重影以间歇性失明替代
+- Blockbench 导出的 Java 模型需手动适配 1.21.1：
+  - 添加 package 与 import
+  - 基类从 EntityModel 改为 HierarchicalModel
+  - 删除旧的 renderToBuffer（r,g,b,a 四参数）方法
+  - 添加 root() 方法返回 root ModelPart
+  - 将 LAYER_LOCATION 的 "modid" 替换为实际 MOD_ID
+- 1.21.1 ArmorMaterial 已改为 record，自定义材质通过 Holder.direct(new ArmorMaterial(...)) 传入 ArmorItem
+- 1.21.1 Tier 接口方法为 getIncorrectBlocksForDrops()，不再使用 getTag()
+- 客户端渲染事件（如 ViewportEvent.RenderFog）需注册到 NeoForge.EVENT_BUS，而非 modEventBus
+- -DEV 目录用于存放 Blockbench 源文件与导出的原始 Java，不直接参与构建
+
+=== IMPLEMENTATION NOTES ===
+[2025-06-16] Step 1: 主类与注册系统骨架
+- 已将主类从 atlantisorigins.java 重构为 AtlantisOrigins.java（PascalCase）
+- 建立了完整的包结构：common/* 与 client/*
+- 创建了所有 DeferredRegister：Items, Blocks, Entities, MobEffects, DamageTypes, Attachments, CreativeTabs, Network
+- Curios 槽位通过 datapack 文件注册（data/atlantis_origins/curios/slots/oxygen_tank.json）
+- build.gradle 添加了 Curios 依赖：top.theillusivec4.curios:curios-neoforge:9.5.0+1.21.1
+- neoforge.mods.toml 添加了 curios 强制前置
+- 经验教训：
+  - NeoForge 1.21.1 网络包接口是 CustomPacketPayload（不是 CustomPayload）
+  - DeferredRegister.Blocks.registerBlock 需要传入 Block::new 函数 + Properties
+  - Registries.TRIGGER_TYPE 对应 CriterionTrigger<?>，不是 PlayerTrigger
+  - @EventBusSubscriber 的 bus=Bus.MOD 已弃用但仍可用，后续需替换
+- 构建状态：BUILD SUCCESSFUL
+
+[2025-06-16] Step 2: DataAttachment 框架
+- 定义了 7 个 AttachmentType：
+  - player_oxygen (Float)：氧气瓶剩余氧气
+  - hypothermia_ticks (Int)：失温累计 tick
+  - pressure_stage (Int)：当前压强阶段
+  - effect_intensity (Float)：屏幕特效强度（用于线性淡出）
+  - dcs_stage (Int)：减压症阶段
+  - dcs_timer (Int)：减压症剩余时间
+  - dcs_damage_window (Float)：50 tick 内 DCS 伤害累计（用于上限）
+- 创建了 PlayerAttachments 辅助类，提供类型安全的 get/set 静态方法
+- 默认氧气值从 Config.OXYGEN_TANK_MAX_OXYGEN 读取
+- 经验教训：
+  - AttachmentType 的默认值 Supplier 在实体首次需要该 attachment 时调用，因此可以安全引用 Config
+  - 玩家状态（氧气、debuff 累计等）必须持久化到 attachment，否则登出/重进会丢失
+- 构建状态：BUILD SUCCESSFUL
+
+[2025-06-16] Step 3: 网络包框架
+- 注册了两种 client-bound 数据包：
+  - OxygenSyncPacket：同步氧气瓶剩余氧气量（Int）
+  - PressureSyncPacket：同步压强阶段（Int）与特效强度（Float）
+- 创建了 ClientNetworkCache 用于客户端缓存服务端同步数据
+- 使用静态 Consumer 作为分包处理器，避免 common 包直接引用 client 类导致服务端加载失败
+- 提供了 PacketDistributor 发送辅助方法 sendOxygenToClient / sendPressureToClient
+- 经验教训：
+  - NeoForge 1.21.1 中 CustomPacketPayload.Type 是正确写法
+  - StreamCodec.composite 支持最多 6 个字段
+  - common 代码不能直接实例化 client-only 类；应通过回调/事件让 client 侧自行注册
+- 构建状态：BUILD SUCCESSFUL
+
+[2025-06-16] Step 4: Curios 专属氧气瓶槽位
+- 创建了 OxygenTankItem，实现 ICurioItem 接口
+- 重写 canEquip，只允许装备到 oxygen_tank 槽位，其他槽位均拒绝
+- 氧气瓶物品从普通 Item 改为 OxygenTankItem，不可堆叠
+- Curios datapack 文件已就位：
+  - data/atlantis_origins/curios/slots/oxygen_tank.json
+  - data/atlantis_origins/curios/entities/player.json
+- 使用 Python + zlib 生成了 1x1 透明占位槽位图标：
+  - assets/atlantis_origins/textures/slot/oxygen_tank.png
+- 经验教训：
+  - Curios 槽位完全通过 datapack JSON 注册，无需 Java 注册代码
+  - ICurioItem.canEquip 的 SlotContext.identifier() 返回槽位 ID，用于限制装备位置
+  - 强制要求氧气瓶不能装备胸甲槽：由于 OxygenTankItem 不是 ArmorItem，本身就不能进胸甲槽，已实现
+- 构建状态：BUILD SUCCESSFUL
+
+[2025-06-16] Step 5: 氧气系统
+- 创建了 CuriosHelper 工具类，用于检测玩家是否装备氧气瓶
+- 实现了服务端氧气消耗逻辑（OxygenEventHandler）：
+  - 每 40 tick 一次呼吸，水下消耗氧气
+  - Y<0 时消耗 × 深海倍率（默认 1.1）
+  - 2.5% 概率回收 0.25，0.25% 概率回收 0.75
+  - 氧气最低保持 1，不会归零
+  - 氧气 > 1% 时维持原版氧气条满值
+  - 头部出水后 3 秒内匀速回满
+- 禁用水下呼吸药水：装备氧气瓶时自动移除水肺效果，并取消饮用动作
+- 实现了客户端 HUD 层（OxygenHudRenderer）：
+  - 使用 RegisterGuiLayersEvent 注册在 AIR_LEVEL 之上
+  - 显示氧气百分比文本
+- 同步：登录时与每 10 tick 发送 OxygenSyncPacket
+- 经验教训：
+  - 1.21.1 NeoForge 使用 LayeredDraw.Layer + RegisterGuiLayersEvent 替代旧的 RenderGuiOverlayEvent
+  - 药水数据现在通过 DataComponents.POTION_CONTENTS + PotionContents 读取
+  - common 代码不应直接引用 client 类；HUD 数据通过 ClientNetworkCache 中转
+- 构建状态：BUILD SUCCESSFUL
+
+[2025-06-16] Step 6: 压强系统
+- 创建了 BiomeHelper.isOceanBiome：优先检查 BiomeTags.IS_OCEAN，其次检查生物群系 ID 是否含 "ocean"
+- 创建了 WaterCheckHelper：
+  - isFullySubmerged：身体在水中且头顶一格为水
+  - isInBubbleColumn：玩家所在方块为气泡柱
+  - hasEnoughWaterAround：垂直方向 ≥10 水源、前后方向 ≥5 水源
+- 实现了 PressureEventHandler：
+  - 四段压强按绝对 Y 坐标判定
+  - 压迫/过压/恐惧效果通过隐藏 MobEffect 应用（无粒子、无图标、不显示 HUD）
+  - 过压每 40 tick 造成 1 点真实伤害
+  - 超压每 10 tick 造成 2.5 点真实伤害
+  - 恐惧效果通过属性修改器 +10% 游泳速度
+  - 饱食度消耗 1.2 倍用每 tick 额外 0.005 exhaustion 近似实现
+  - 效果强度线性淡入/淡出，5 秒内消退
+- 同步：每 5 tick 或阶段变化时发送 PressureSyncPacket
+- 经验教训：
+  - 水源扫描开销较大，仅在通过前序条件（海洋群系+浸没）后才执行
+  - 隐藏效果的关键是 MobEffectInstance 的 visible=false, showIcon=false
+  - 真实伤害通过 damageSources().source(ModDamageTypes.TRUE_DAMAGE) 创建
+  - 屏幕实际渲染（暗角/血丝）留在“客户端屏幕特效”步骤实现
+- 构建状态：BUILD SUCCESSFUL
+
+[2025-06-16] Step 7: 失温系统 + 氧气回收数值调整
+- 氧气回收数值调整：2.5% 概率档从 0.125 改为 0.25 单位氧气
+- 实现了 HypothermiaEventHandler：
+  - 触发条件：海洋群系 + 完全浸入水中
+  - 按生物群系设定阈值：
+    - 冻洋 1000 tick
+    - 冷水海洋 3000 tick
+    - 温水海洋 6000 tick
+    - 暖海 20000 tick
+  - Y<30 时阈值降低 500（暖海降低 250）
+  - 离开海水/非海洋群系后，累计值以 10 tick/次 快速衰减
+  - 达到阈值后应用隐藏失温效果，每 40 tick 造成 1 点真实伤害
+  - 触发时设置 freeze ticks 90，屏幕结霜
+  - 新增 HypothermiaClientHandler，在 ComputeCameraAngles 添加相机随机抖动
+- 经验教训：
+  - 生物群系 ID 通过 level.getBiome(pos).unwrapKey() 获取
+  - 深洋变体（deep_xxx）通过 contains 匹配合并到对应类别
+  - 视觉冻结效果（结霜 vignette / 抖动）留在“客户端屏幕特效”步骤实现
+- 构建状态：BUILD SUCCESSFUL
+
+[2025-06-16] Step 8: 减压症系统
+- 新增 DCS_DAMAGE 伤害类型，与 TRUE_DAMAGE 区分（用于排除 DCS 自身伤害的 50% 加成）
+- 创建了 DcsEventHandler：
+  - 每 20 tick 检测一次上升速度，>= 12 格/秒判定为快速上浮
+  - Y<0 快速上浮 → 重症 DCS（持续至治疗）
+  - Y>0 快速上浮 → 轻症 DCS（上岸后触发，持续 50 秒）
+  - 应用隐藏 DECOMPRESSION_SICKNESS 效果，附带 -30% 移动速度
+  - 每 40 tick 造成等于当前移动速度的真实伤害，50 tick 窗口上限 5.5
+  - 通过 LivingDamageEvent.Pre 使非 DCS 伤害增加 (移动速度 × 50%)
+- 添加了 DCS 相关 attachment：DCS_STAGE、DCS_TIMER、DCS_DAMAGE_WINDOW、DCS_PENDING_MILD、DCS_LAST_Y、DCS_LAST_Y_TICK
+- 经验教训：
+  - 区分伤害类型是排除自身加成的最干净方式
+  - 移动速度属性会被 DCS 减速效果影响，因此 DCS 伤害会随减速降低
+  - 高压氧舱治疗逻辑将在下一步实现
+- 构建状态：BUILD SUCCESSFUL
+
+[2025-06-16] Step 9: 高压氧舱多方块结构
+- 创建了 HyperbaricChamberBlock（控制器方块，实现 EntityBlock）
+- 创建了 HyperbaricChamberBlockEntity 与 ModBlockEntityTypes
+- 结构验证：5×3×4 范围，y=0 为铁块地板，x/z 外圈为 2 格高铁块墙，允许最多 1 个缺失方块作为门
+- 每 20 tick 检测结构有效性与内部玩家
+- 玩家进入范围内且患有重症 DCS 时，清除 DCS 状态并发送提示
+- 经验教训：
+  - NeoForge 1.21.1 中方块实体通过 EntityBlock.getTicker 注册 ticker
+  - 多方块结构验证应避免每 tick 全量扫描，这里使用 20 tick 间隔
+  - 5×3×4 的尺寸无法做成全封闭带顶密室，因此设计为开放式顶部 + 围墙
+- 构建状态：BUILD SUCCESSFUL
+
+[2025-06-16] Step 10-11: 气囊物品 + 气瓶物品
+- 创建了 AirBladderItem：
+  - Y>0 且在水中时右键使用
+  - 给予玩家 0.6/tick 的垂直速度（即 12 m/s）
+  - 触发轻症 DCS（若 DCS 配置开启）
+  - 添加 3 秒冷却，避免滥用
+- 气瓶物品 OxygenTankItem 已在 Curios 槽位步骤完成核心实现
+- 经验教训：
+  - 设置实体速度后需标记 hurtMarked=true 以确保同步
+  - 物品的 use 方法返回 InteractionResultHolder 控制动画/冷却行为
+- 构建状态：BUILD SUCCESSFUL
+
+[2025-06-16] Step 12: 脚蹼 / 深海灯 / 压缩镐 + 压缩空气块
+- 脚蹼（FlipperItem）：boots 装备，WATER_MOVEMENT_EFFICIENCY +1.0 完全抵消水阻力，SWIM_SPEED +1.2（220% 原速）
+- 深海灯（DeepSeaLampBlockItem）：继承 BlockItem，可放置为发光方块；手持水下时通过 inventoryTick 在玩家眼睛位置生成/移除 diving_light_source
+- 压缩镐（CompressedPickaxeItem）：自定义 tier，速度 10.0，对压缩空气块 2 倍速
+- 压缩空气块（CompressedAirBlock）：铁块属性，仅在被压缩镐破坏时通过战利品表掉落自身
+- 经验教训：
+  - NeoForge 1.21.1 的 SWIM_SPEED 属性由 NeoForgeMod.SWIM_SPEED 提供
+  - BlockItem 的 use 返回 pass 可阻止方块放置，同时保留 BlockItem 对动态光源模组的兼容性
+  - 战利品表 match_tool 条件可实现“特定工具才掉落”
+- 构建状态：BUILD SUCCESSFUL
+
+[2025-06-16] Step 13: 客户端屏幕特效
+- 创建了 ScreenEffectsRenderer，注册在 SLEEP_OVERLAY 之上的 GUI 层
+- 根据 ClientNetworkCache.pressureStage 与 effectIntensity 渲染：
+  - 阶段 1：vignette 暗角
+  - 阶段 2：vignette + 血屏（支持四种模式）
+  - 阶段 3：灰度覆盖 + 饱和增强 + 间歇性黑屏脉冲
+- 使用 Generated PNG 占位纹理：vignette.png / blood_overlay.png
+- 经验教训：
+  - 1.21.1 使用 RegisterGuiLayersEvent + LayeredDraw.Layer 实现全屏覆盖
+  - 真·灰度/饱和度需要 shader post-processing；当前版本使用半透明覆盖层近似
+- 构建状态：BUILD SUCCESSFUL
+
+[2025-06-16] Step 14: 进度系统
+- 创建了 7 个进度，覆盖普通 / 隐藏（goal + hidden）/ 挑战（challenge）三种框架
+- 普通：root（获得氧气罐）、use_air_bladder（使用气囊）、compressed_miner（获得压缩空气块）
+- 隐藏：deep_diver（Y<20）、abyss_walker（Y<0）
+- 挑战：cure_dcs（高压氧舱治愈重症 DCS）、survive_horror（首次进入超压阶段）
+- 使用 impossible 触发器 + AdvancementHelper 在代码中授予自定义事件进度
+- location 触发器用于深度类进度
+- 经验教训：
+  - 进度 JSON 位于 data/atlantis_origins/advancement/
+  - Player.getAdvancements().award(holder, criterion) 可在运行时授予 impossible 进度
+- 构建状态：BUILD SUCCESSFUL
+
+[2025-06-16] Step 15: Patchouli 软依赖集成
+- 创建了数据驱动手册《Atlantis Manual》
+- 3 个分类：Basics、Equipment、Dangers
+- 8 个条目：Oxygen、Pressure、Hypothermia、Oxygen Tank、Deep Sea Lamp、Air Bladder、DCS、Hyperbaric Chamber
+- 在 neoforge.mods.toml 中声明 patchouli 为可选 CLIENT 依赖
+- 经验教训：
+  - Patchouli 书籍完全通过 data/atlantis_origins/patchouli_books/ 下的 JSON 驱动，无需 Java 代码
+  - 书籍物品 ID 自动为 <modid>:<book_name>
+- 构建状态：BUILD SUCCESSFUL
+
+[2025-06-16] Step 16: 实体（深渊水母）
+- 创建了 AbyssalJellyfish，继承 Squid 以复用 AI 与基础行为
+- 注册实体类型、属性、生成位置、刷怪蛋
+- 客户端使用自定义 Blockbench 模型 AbyssalJellyfishModel（继承 HierarchicalModel）
+- AbyssalJellyfishRenderer 继承 MobRenderer 并复制原版鱿鱼旋转逻辑，保持游动姿态
+- 添加了 AbyssalJellyfishEmissiveLayer 发光层，使用 _e 纹理叠加
+- 经验教训：
+  - 继承现有实体可大幅减少模型/动画工作量
+  - EntityAttributeCreationEvent 与 RegisterSpawnPlacementsEvent 都在 mod 事件总线
+  - 渲染器注册在 EntityRenderersEvent.RegisterRenderers
+- 构建状态：BUILD SUCCESSFUL
+
+[2025-06-16] Step 17: 清理已弃用 API + 高压氧舱验证强化 + 多标签页 + 多语言
+- 客户端事件订阅从 @EventBusSubscriber(bus=Bus.MOD) 改为 ClientSetup 中 modEventBus.register(...) 手动注册
+- 高压氧舱结构验证增加：控制器存在检查、内部空间必须为空、墙体缺失块限制为 1
+- 创造模式物品栏拆分为 3 个独立标签页：Equipment / Blocks / Life
+- 新增 zh_cn、fr_fr、ru_ru、ja_jp 语言文件，覆盖全部文本条目
+- 经验教训：
+  - @EventBusSubscriber.Bus.MOD 在 NeoForge 1.21.1 已标记为移除，应使用构造器注入的 IEventBus
+  - 多方块结构验证应检查内部空间是否可用，避免被封堵
+  - 多语言只需在 assets/<modid>/lang/ 下新增 JSON 即可自动加载
+- 构建状态：BUILD SUCCESSFUL
+
+[2025-06-16] Step 18: 0.1.02_alpha 调整与重构
+- 版本号更新为 0.1.02_alpha，已执行 clean build 与 runServer 验证
+- 世界生成修复：
+  - 1.21.1 的 multi_noise_biome_source_parameter_list 改为 preset 引用格式，overworld.json 仅保留 { "preset": "minecraft:overworld" }
+  - 自定义海洋 biome 参数迁移到 worldgen/world_preset/normal.json 内联
+  - 噪声设置 sea_level 从 63 提升到 83，所有压力/深度阈值随之上移 10 格
+- 压迫屏幕特效重绘：
+  - vignette.png 改为 256×256 标准四角晕影（中心透明、四角渐变黑）
+  - ScreenEffectsRenderer 使用 PoseStack 缩放铺满屏幕，修复紫黑平铺问题
+  - GUI 层注册在 CROSSHAIR 之下，不再覆盖原版 HUD
+- 气囊重做：
+  - 使用新 Attachment AIR_BLADDER_ASCENDING 维持持续上升状态
+  - 上升速度降至 10 m/s，直到浮出水面、落地或撞墙自动停止
+  - 不再直接触发减压症判定，避免不必要的 DCS
+- 脚蹼重做：
+  - SWIM_SPEED +1.2（ADD_MULTIPLIED_TOTAL），等效 220% 原速
+  - WATER_MOVEMENT_EFFICIENCY +1.0（ADD_VALUE），完全抵消水阻力
+- 失温修复：
+  - 出水/非海洋后衰减从 -2/tick 提速到 -10/tick
+  - 深海阈值从 Y<20 改为 Y<30
+  - 触发时设置 freeze ticks 90，屏幕结霜
+  - 新增 HypothermiaClientHandler，在 ComputeCameraAngles 添加相机随机抖动
+- 压力深度阈值整体上移 10 格：
+  - Y>45 无压力
+  - 30~45 压迫
+  - 10~30 过压
+  - ≤10 超压
+- 潜水灯调整：
+  - 改为继承普通 Item，useOn 返回 FAIL，彻底不可放置
+  - 移除手持夜视效果，仅保留内置/LambDynamicLights 动态光源
+- 高压氧舱重构为高压气泵（HyperbaricPumpItem）：
+  - 删除 HyperbaricChamberBlock / BlockEntity / 结构验证
+  - 物品 ID 仍为 hyperbaric_chamber，显示名改为“高压气泵”
+  - 右键使用即可清除 DCS stage、timer、pending mild 与 freeze ticks
+  - 触发 cure_dcs 进度
+- 经验教训：
+  - 1.21.1 世界预设 JSON 结构变化较大，自定义 biome 参数应直接写入 world_preset/normal.json
+  - GUI 层尽量避免覆盖原版 HUD，使用 registerBelow 注册在 CROSSHAIR 下方更友好
+  - 垂直速度超过约 11 m/s 会触发减压症，气囊 10 m/s 是安全上限
+  - WATER_MOVEMENT_EFFICIENCY 是抵消水阻力的正确属性，而非叠加 swim_speed
+- 构建状态：BUILD SUCCESSFUL（atlantis_origins-0.1.02_alpha.jar）
+
+[2025-06-16] Step 19: 删除潜水灯，深海灯接管移动光源
+- 删除了 DivingLampItem 及对应的 ModItems.DIVING_LAMP 注册
+- 删除了潜水灯纹理、模型、所有语言条目、Patchouli 条目
+- 深海灯（deep_sea_lamp）方块物品改为 DeepSeaLampBlockItem，继承 BlockItem 并内置移动光源逻辑
+- 手持深海灯浸入水中时，在玩家眼睛位置生成 diving_light_source；出水/未手持/配置关闭/安装 LambDynamicLights 时移除
+- deep_diver 进度图标由潜水灯改为深海灯
+- Patchouli Equipment 分类图标由潜水灯改为深海灯；新增 deep_sea_lamp 条目
+- 创造模式 Equipment 标签页中的潜水灯替换为深海灯
+- 经验教训：
+  - BlockItem 可以重写 inventoryTick 实现手持效果，同时保留放置方块的能力
+  - 删除一个物品时必须同步清理：Java 注册、创造标签页、语言文件、模型、纹理、Patchouli、进度图标、BlockEntity 自检引用
+- 构建状态：BUILD SUCCESSFUL（atlantis_origins-0.1.02_alpha.jar）
+
+[2025-06-16] Step 20: 构建 0.1.3-alpha
+- 版本号从 0.1.02_alpha 更新为 0.1.3-alpha
+- 新增矿物系统：
+  - 紫铜矿（cuprite_ore）— 铜矿变体，60% 替换率，独立掉落粗紫铜与紫铜锭
+  - 山铜矿（orichalcum_ore）— 深层铜矿变体，90% 替换率，独立掉落粗山铜与山铜锭
+  - 硫磺矿（sulfur_ore）— 岩浆附近生成，最大 30 方块连续矿脉，掉落硫磺粉
+- 深渊水母模型改为 Blockbench 导出的自定义模型（AbyssalJellyfishModel），继承 HierarchicalModel
+- AbyssalJellyfishRenderer 改为继承 MobRenderer 并保留原版鱿鱼式游动旋转
+- 构建产物：build/libs/atlantis_origins-0.1.3-alpha.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2025-06-16] Step 21: 深海灯模型替换为 Blockbench 4D/3D 表面模型
+- 从 -DEV/deep_sea_lamp.bbmodel 提取模型数据与内嵌纹理
+- 覆盖 `assets/atlantis_origins/models/block/deep_sea_lamp.json`，包含 21 个 elements 的复杂方块模型
+- 覆盖 `assets/atlantis_origins/textures/block/deep_sea_lamp.png`，尺寸 16×80（5 帧动画）
+- 新增 `deep_sea_lamp.png.mcmeta` 动画配置，frametime=2
+- 模型 credit 标注为 "4D model with 3D surface"
+- 经验教训：
+  - Blockbench 的 java_block 格式可内嵌 base64 纹理，导出后需手动提取为 PNG
+  - 多帧纹理需配合 `.png.mcmeta` 才能正确播放动画
+  - 部分 face 可能没有 texture 字段（被 Blockbench 禁用），生成 JSON 时需跳过
+- 构建状态：BUILD SUCCESSFUL（atlantis_origins-0.1.3-alpha.jar）
+
+[2025-06-16] Step 22: 构建 0.1.3-alpha-fix
+- 版本号从 0.1.3-alpha 更新为 0.1.3-alpha-fix
+- 包含深海灯 4D/3D 表面模型替换、矿物系统、自定义水母模型等全部 0.1.3-alpha 内容
+- 构建产物：build/libs/atlantis_origins-0.1.3-alpha-fix.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2025-06-16] Step 23: 构建 0.1.3-alpha-fix2
+- 版本号从 0.1.3-alpha-fix 更新为 0.1.3-alpha-fix2
+- 修复深海灯 body inflate：body 从 [0,0,0]->[16,16,16] 调整为 [1,1,1]->[15,15,15]
+- 新增山铜装备系统：
+  - 山铜镐（orichalcum_pickaxe）：由压缩镐重构而来，等效下界合金镐 + 效率 II（速度 14），耐久等效耐久 II（6093）
+  - 山铜斧（orichalcum_axe）、山铜锹（orichalcum_shovel）、山铜锄（orichalcum_hoe）：同上属性
+  - 山铜棍（orichalcum_stick）：两锭合成 4 根，作为工具手柄
+  - 山铜盔甲四件套（orichalcum_helmet/chestplate/leggings/boots）：防御/韧性等效下界合金，耐久等效耐久 II，首次进入物品栏自动附魔保护 III
+  - 山铜矿（orichalcum_ore）现在需要钻石镐及以上才能掉落
+  - 压缩空气块现在必须由山铜镐开采才会掉落
+- 新增初学者潜水套装（beginner_diving_suit + beginner_diving_pants）：
+  - 防护等效锁链套装（胸甲 5，护腿 4）
+  - 同时穿戴时失温阈值提高 20%
+- 新增泳镜（goggles）：
+  - Curios 饰品槽 goggles
+  - 装备后水下取消浸没迷雾
+- 相关资源：语言键、配方、创造标签页、物品模型、占位纹理、Curios slot 数据文件
+- 经验教训：
+  - 1.21.1 中 ArmorMaterial 已改为 record，需通过 Holder.direct(...) 传入 ArmorItem
+  - 1.21.1 中 Tier 接口方法为 getIncorrectBlocksForDrops()，不再使用 getTag()
+  - ViewportEvent.RenderFog 属于游戏事件总线（NeoForge.EVENT_BUS），不能注册到 modEventBus
+- 构建产物：build/libs/atlantis_origins-0.1.3-alpha-fix2.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2025-06-16] Step 24: 构建 0.1.3-alpha-fix3
+- 版本号从 0.1.3-alpha-fix2 更新为 0.1.3-alpha-fix3
+- 修复泳镜客户端事件总线注册错误：ViewportEvent.RenderFog 应注册到 NeoForge.EVENT_BUS 而非 modEventBus
+- 崩溃报告：错误报告-2026-6-18_星期四_20.11.10.zip
+- 构建产物：build/libs/atlantis_origins-0.1.3-alpha-fix3.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2025-06-16] Step 25: 构建 0.1.3-alpha-fix4
+- 版本号从 0.1.3-alpha-fix3 更新为 0.1.3-alpha-fix4
+- 修复盔甲数值错误：
+  - ArmorMaterial 第一个参数是 defense map，之前错误地传入了 durability 数值，导致潜水裤显示 +256 护甲值
+  - 1.21.1 中盔甲耐久不再由 ArmorMaterial 记录，需在 Item.Properties.durability(ArmorItem.Type.getDurability(multiplier)) 中设置
+  - 初学者潜水套装：防御与耐久改为与皮革套装一致（胸甲 3/80，护腿 2/75）
+  - 山铜盔甲：防御恢复为下界合金基础值（头盔 3，胸甲 8，护腿 6，靴子 3），耐久 multiplier 改为 111（= 下界合金 37 × 3，等效耐久 II）
+- 经验教训：
+  - 1.21.1 ArmorMaterial record 只有 defense / enchantmentValue / equipSound / repairIngredient / layers / toughness / knockbackResistance，没有 durability
+  - 盔甲耐久系数通过 ArmorItem.Type.getDurability(multiplier) 计算，需在创建 ArmorItem 时传入 Item.Properties.durability(...)
+- 构建产物：build/libs/atlantis_origins-0.1.3-alpha-fix4.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2025-06-16] Step 26: 构建 0.1.3-alpha-fix5
+- 版本号从 0.1.3-alpha-fix4 更新为 0.1.3-alpha-fix5
+- 修复浮力气囊失效：
+  - 原实现使用 player.setDeltaMovement() 设置上升速度，但玩家实体的运动会很快被客户端输入覆盖
+  - 改为 player.push(0, targetSpeed - currentY, 0) 施加服务端速度增量，并设置 hasImpulse
+  - 放宽停止条件：仅在水外或触地时停止，移除 verticalCollision/horizontalCollision（容易误触发）
+- 经验教训：
+  - 对玩家实体强制运动应使用 push/addDeltaMovement 而非 setDeltaMovement，否则会被客户端输入覆盖
+  - 水中碰撞检测过于敏感，停止条件应尽量精简
+- 构建产物：build/libs/atlantis_origins-0.1.3-alpha-fix5.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2025-06-16] Step 27: 构建 0.1.4-alpha
+- 版本号从 0.1.3-alpha-fix5 更新为 0.1.4-alpha（添加新物品，第三位版本号 +1，重置 fix 计数）
+- 重新修复浮力气囊：
+  - 之前用 push/addDeltaMovement 仍会被客户端输入覆盖
+  - 改为直接使用 player.move(MoverType.SELF, ...) 在服务端移动玩家位置，位置变化会同步到客户端
+  - 停止条件保持精简：离开水或触地时停止
+- 新增山铜三叉戟（orichalcum_trident）：
+  - 11 点攻击伤害（原版三叉戟 8 点）
+  - 耐久等效耐久 II 下界合金（6093）
+  - 首次进入物品栏自动附魔忠诚 III + 激流 III
+  - 继承原版 TridentItem，投掷/激流逻辑与原版三叉戟一致
+  - 配方：3 山铜锭 + 1 山铜棍
+- 修复其他山铜工具伤害：
+  - 1.21.1 中工具需要在 Item.Properties 显式调用 .attributes(XxxItem.createAttributes(...))
+  - OrichalcumTier.ATTACK_DAMAGE_BONUS 保持 5.0（下界合金 4.0 +1）
+  - 山铜镐 6 伤害、山铜斧 10 伤害、山铜锹 6.5 伤害、山铜锄 1 伤害
+- 经验教训：
+  - 对玩家实体强制位移，使用 player.move(MoverType.SELF, ...) 比修改速度更可靠
+  - 1.21.1 中 DiggerItem 子类必须显式传入 attributes，否则没有攻击伤害/速度属性
+  - 三叉戟有公共 static createAttributes()，自定义三叉戟内部方法需改名避免覆盖冲突
+- 构建产物：build/libs/atlantis_origins-0.1.4-alpha.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2025-06-16] Step 28: 构建 0.1.4-alpha-fix
+- 版本号从 0.1.4-alpha 更新为 0.1.4-alpha-fix
+- 修复深渊水母碰撞箱与模型严重不匹配的问题：
+  - 原碰撞箱 0.6×0.8，远小于 Blockbench 自定义模型
+  - 调整为 1.6×2.2，覆盖主体与大部分触手范围
+- 构建产物：build/libs/atlantis_origins-0.1.4-alpha-fix.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2025-06-16] Step 29: 构建 0.1.4-alpha-fix2
+- 版本号从 0.1.4-alpha-fix 更新为 0.1.4-alpha-fix2
+- 修复深渊水母碰撞箱位置：
+  - 覆盖 AbyssalJellyfish#makeBoundingBox()，将碰撞箱沿 Z 轴向后偏移 0.4，使其对齐模型视觉中心
+- 删除浮力气囊（air_bladder）：
+  - 删除 AirBladderItem、AirBladderEventHandler
+  - 从 ModItems、ModCreativeTabs 移除注册
+  - 从 ModAttachments、PlayerAttachments 移除 AIR_BLADDER_ASCENDING
+  - 从 AdvancementHelper、DcsEventHandler 移除相关触发
+  - 删除模型、纹理、配方、进度、Patchouli 条目
+  - 从所有语言文件中移除相关键
+- 构建产物：build/libs/atlantis_origins-0.1.4-alpha-fix2.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-16] Step 30: 构建 0.1.4-alpha-fix3
+- 版本号从 0.1.4-alpha-fix2 更新为 0.1.4-alpha-fix3
+- 进一步修复深渊水母碰撞箱：
+  - 根据 Blockbench body 枢轴点 (0, -2.5, 0) 计算世界坐标中心约为 Y=1.0625 方块
+  - 碰撞箱中心与模型枢轴点对齐：高度 4.0、直径 1.4，Y 偏移 -0.9375
+  - 保留 Z 轴 -0.4 后移，对齐模型视觉中心
+  - 调整后可覆盖 body 与向下延伸的触手范围
+- 构建产物：build/libs/atlantis_origins-0.1.4-alpha-fix3.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-16] Step 31: 构建 0.1.4-alpha-fix4
+- 版本号从 0.1.4-alpha-fix3 更新为 0.1.4-alpha-fix4
+- 同步 Blockbench 导出的新水母模型（整体向下移动 26 像素）到客户端模型代码
+- 调整 AbyssalJellyfishRenderer：
+  - 移除原版鱿鱼式的 (0.5, -1.2) Y 轴平移
+  - 改为在旋转前整体抬高 0.72 方块，使模型底部对齐实体位置/碰撞箱底部
+- 调整深渊水母碰撞箱：
+  - 尺寸恢复为 1.0×2.2，Y 轴不再额外偏移
+  - 仅保留 Z 轴 -0.4 后移对齐视觉中心
+- 构建产物：build/libs/atlantis_origins-0.1.4-alpha-fix4.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-16] Step 32: 构建 0.1.4-alpha-fix5
+- 版本号从 0.1.4-alpha-fix4 更新为 0.1.4-alpha-fix5
+- 同步用户重新导出的水母模型（-DEV/AbyssalJellyfishModel.java）到客户端模型代码：
+  - body PartPose 从 (0, -6.5, 0) 改为 (0, 7.5, 0)
+  - tentacle/foot 等部件相应上移
+- 调整 AbyssalJellyfishRenderer 抬高量：
+  - 从 0.72 改为 0.125，匹配新模型最低点
+- 按用户要求将碰撞箱高度减小约 2/5：
+  - 从 2.2 改为 1.3
+  - 宽度保持 1.0，Z 轴 -0.4 后移保留
+- 构建产物：build/libs/atlantis_origins-0.1.4-alpha-fix5.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-16] Step 33: 构建 0.1.5-alpha
+- 版本号从 0.1.4-alpha-fix5 更新为 0.1.5-alpha（新增实体，第三位版本号 +1，重置 fix 计数）
+- 同步用户重新导出的深渊水母模型（-DEV/AbyssalJellyfishModel.java）：
+  - body PartPose 从 (0, 7.5, 0) 改为 (0, 11.5, 0)
+  - 其他部件相应上移
+- 调整 AbyssalJellyfishRenderer：
+  - 抬高量从 0.125 改为 -0.375，使新模型最低点对齐实体位置
+- 按用户要求将碰撞箱整体 Y 下移 2/5 方块：
+  - Y 偏移从 0.0 改为 -0.4
+  - 宽度保持 1.0，高度保持 1.3，Z 轴 -0.4 后移保留
+- 新增发光鱼群（bioluminescent_fish）：
+  - 实体 BioluminescentFish 继承 AbstractSchoolingFish，具有鱼群行为
+  - 客户端模型 BioluminescentFishModel（适配 Blockbench 导出的 -DEV/bioluminescent_fish.java）
+  - 动画类 BioluminescentFishAnimation：
+    - SWIM = animation（游泳循环）
+    - HIT = animation2（受击）
+    - FLEE = animation3（受击后逃跑）
+  - 渲染器 BioluminescentFishRenderer + BioluminescentFishEmissiveLayer（_e 发光纹理）
+  - 注册实体、渲染器、LayerDefinition
+  - 添加刷怪蛋 BIOLUMINESCENT_FISH_SPAWN_EGG
+  - 复制纹理 bioluminescent_fish.png / bioluminescent_fish_e.png
+  - 添加五语言条目
+  - 添加空战利品表
+- 构建产物：build/libs/atlantis_origins-0.1.5-alpha.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-16] Step 34: 构建 0.1.5-alpha-fix
+- 版本号从 0.1.5-alpha 更新为 0.1.5-alpha-fix
+- 修复发光鱼群未加入创意模式物品栏的问题：
+  - 在 ModCreativeTabs.ATLANTIS_ORIGINS_LIFE 中添加 BIOLUMINESCENT_FISH_SPAWN_EGG
+- 修复发光鱼群缺少属性注册导致无法生成的问题：
+  - 在 AtlantisOrigins#registerEntityAttributes 中为 BIOLUMINESCENT_FISH 注册 AbstractFish.createAttributes()
+- 按用户要求继续将深渊水母碰撞箱 Y 轴下移 30%：
+  - Y 偏移从 -0.4 改为 -0.7
+  - 宽度保持 1.0，高度保持 1.3，Z 轴 -0.4 后移保留
+- 构建产物：build/libs/atlantis_origins-0.1.5-alpha-fix.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-16] Step 35: 构建 0.1.5-alpha-fix2
+- 版本号从 0.1.5-alpha-fix 更新为 0.1.5-alpha-fix2
+- 修复发光鱼群渲染与碰撞箱对齐：
+  - BioluminescentFishRenderer 中模型下移量从 -1.2 改为 -1.5（Blockbench Y=24 原点对应实体位置）
+  - 碰撞箱高度从 0.3 增加到 0.4
+  - BioluminescentFish#makeBoundingBox() 增加 Y 轴 -0.3 偏移，使碰撞箱包住渲染后的模型
+- 构建产物：build/libs/atlantis_origins-0.1.5-alpha-fix2.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-16] Step 36: 构建 0.1.5-alpha-fix3
+- 版本号从 0.1.5-alpha-fix2 更新为 0.1.5-alpha-fix3
+- 修复发光鱼群模型与碰撞箱严重错位（间隔超过 1 方块）的问题：
+  - 原因：BioluminescentFishRenderer 中额外添加了 -1.5 的 Y 轴平移，而 MobRenderer/LivingEntityRenderer 默认已经对 24px 生物模型做了 -1.501 的原点下移，两者叠加导致模型下沉约 3 个方块
+  - 移除 BioluminescentFishRenderer 中多余的 Y 轴平移，仅保留 90° Y 轴旋转让模型朝向正确
+  - 保留碰撞箱 Y 偏移 -0.3、高度 0.4，使其与默认渲染位置对齐
+- 构建产物：build/libs/atlantis_origins-0.1.5-alpha-fix3.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-16] Step 37: 构建 0.1.5-alpha-fix4
+- 版本号从 0.1.5-alpha-fix3 更新为 0.1.5-alpha-fix4
+- 深渊水母与发光鱼群改为像发光鱿鱼一样真实发光：
+  - AbyssalJellyfishRenderer 与 BioluminescentFishRenderer 均覆盖 getBlockLightLevel() 返回 15
+  - 保留原有 _e 发光纹理层（RenderType.eyes + FULL_BRIGHT）
+- 移除深渊水母复用鱿鱼的喷墨行为：
+  - AbyssalJellyfish 覆盖 hurt()，通过反射直接调用 LivingEntity#hurt()，跳过 Squid#hurt() 中的 spawnInk()
+- 深海灯模型修复：
+  - 用 -DEV/deep_sea_lamp.json 替换 src/.../models/block/deep_sea_lamp.json，修复未定义面
+- 构建产物：build/libs/atlantis_origins-0.1.5-alpha-fix4.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-19] Step 38: 构建 0.1.6-alpha
+- 版本号从 0.1.5-alpha-fix4 更新为 0.1.6-alpha（新增功能方块，第三位版本号 +1，重置 fix 计数）
+- 新增紫铜武器台（Cuprite Weapon Station）：
+  - 5×5 合成网格 + 1 个结果槽
+  - 自定义容器 CupriteWeaponStationMenu / 屏幕 CupriteWeaponStationScreen
+  - 自定义 5×5 定型配方类型 cuprite_weapon_station，支持标准 pattern/key JSON
+  - 实现山铜棍、山铜头盔、山铜胸甲、山铜护腿、山铜靴子、山铜镐、山锄、山锹、山铜三叉戟 5×5 配方
+- 新增点金反应炉（Alchemical Reactor）：
+  - 4 个固定输入槽 + 1 个输出槽
+  - 方块实体 AlchemicalReactorBlockEntity，固定 100 tick 炼制时间
+  - 自定义配方类型 alchemical_reactor，读取 4 个 ingredients 与 result
+  - 实现山铜锭、紫铜锭的点金配方
+- 注册：
+  - 新增 ModMenus.java 与 ModRecipes.java 使用 DeferredRegister
+  - 在 ModBlockEntityTypes.java 注册 AlchemicalReactorBlockEntity
+  - 在 ClientSetup.java 注册菜单屏幕
+  - 在 AtlantisOrigins.java 注册 ModMenus、ModRecipes 与 CapabilityEventHandler
+- 数据与资源：
+  - 新增方块状态、模型、占位纹理（复用紫铜矿/山铜矿纹理）
+  - 新增 GUI 占位纹理（256×256 灰色 PNG，待替换）
+  - 新增两种方块的合成配方（crafting_shaped）
+  - 更新 5 个语言文件，添加 block/container 键
+- 在 ModCreativeTabs.ATLANTIS_ORIGINS_BLOCKS 中添加两个方块物品
+- 构建产物：build/libs/atlantis_origins-0.1.6-alpha.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-19] Step 39: 修复 0.1.6-alpha 启动崩溃
+- 崩溃原因：AlchemicalReactorBlock 使用 BlockBehaviour.Properties.ofFullCopy(Blocks.BLAST_FURNACE)
+  复制了依赖 lit 方块状态的发光属性，但 AlchemicalReactorBlock 自身未注册 lit 状态，
+  导致 StateDefinition 构造时抛出 IllegalArgumentException: Cannot get property BooleanProperty{name=lit}...
+- 修复：将 ofFullCopy(Blocks.BLAST_FURNACE) 改为 ofFullCopy(Blocks.IRON_BLOCK)，保留 strength 与 requiresCorrectToolForDrops
+- 版本号从 0.1.6-alpha 更新为 0.1.6-alpha-fix1（bug 修复，fix 计数 +1）
+- 构建产物：build/libs/atlantis_origins-0.1.6-alpha-fix1.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-19] Step 40: 将 sulfur 全面重构为 brimstone
+- 重命名 Java 标识符：
+  - ModBlocks: SULFUR_ORE → BRIMSTONE_ORE, SULFUR_ORE_ITEM → BRIMSTONE_ORE_ITEM
+  - ModItems: SULFUR_DUST → BRIMSTONE_DUST
+  - ModFeatures: SULFUR_ORE → BRIMSTONE_ORE
+  - SulfurOreFeature.java → BrimstoneOreFeature.java，类名同步修改
+  - ModCreativeTabs 中引用同步更新
+- 重命名资源 ID：
+  - 方块：sulfur_ore → brimstone_ore
+  - 物品：sulfur_dust → brimstone_dust
+  - 地物类型与文件：ore_sulfur → ore_brimstone，sulfur_ore → brimstone_ore
+- 更新相关文件内容：
+  - 方块状态、模型、物品模型、纹理路径
+  - 战利品表、配方（点金反应炉）、镐可挖掘标签、生物群系修改器
+  - 世界生成配置（configured_feature / placed_feature）
+  - 5 个语言文件中的键与英文显示名（Brimstone Ore / Brimstone Dust）
+- 版本号从 0.1.6-alpha-fix1 更新为 0.1.7-alpha（内容 ID 重构，第三位版本号 +1，重置 fix 计数）
+- 构建产物：build/libs/atlantis_origins-0.1.7-alpha.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-19] Step 41: 修复 PNG 纹理被 sed 误损坏的问题
+- 问题：在 sulfur → brimstone 全局替换时，find 命令误包含 *.png，导致 sed 以文本方式处理二进制 PNG，
+  破坏了 PNG 文件头与 CRC，所有纹理失效。
+- 修复：从测试目录中保留的 atlantis_origins-0.1.6-alpha.jar 提取原始纹理，
+  覆盖 src/main/resources/assets/atlantis_origins/textures 下全部文件，
+  并手动将 sulfur_ore.png / sulfur_dust.png 重命名为 brimstone_ore.png / brimstone_dust.png。
+- 重新执行 ./gradlew clean build，确认 jar 内 PNG 均为有效图像。
+- 构建产物：build/libs/atlantis_origins-0.1.7-alpha.jar（版本号保持 0.1.7-alpha）
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-19] Step 42: 替换紫铜矿与紫铜锭纹理并重新构建
+- 用户替换资源：
+  - assets/atlantis_origins/textures/block/cuprite_ore.png
+  - assets/atlantis_origins/textures/item/cuprite_ingot.png
+- 执行 ./gradlew clean build，新纹理已正确打包进 jar
+- 构建产物：build/libs/atlantis_origins-0.1.7-alpha.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-19] Step 43: 修复深渊水母受伤导致的栈溢出崩溃
+- 崩溃原因：AbyssalJellyfish.hurt() 通过反射 Method.invoke 调用 LivingEntity#hurt，
+  但 Java 动态分发仍调用了子类重写的 hurt()，形成无限递归，最终 StackOverflowError。
+- 修复：将反射替换为 MethodHandle + unreflectSpecial，绕过动态分发，
+  直接调用 LivingEntity#hurt 的实现，从而跳过 Squid#hurt() 中的 spawnInk()，避免喷墨。
+- 版本号从 0.1.7-alpha 更新为 0.1.7-alpha-fix1（bug 修复，fix 计数 +1）
+- 构建产物：build/libs/atlantis_origins-0.1.7-alpha-fix1.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-19] Step 44: 更新深海灯模型与 GUI 占位纹理
+- 深海灯：用 -DEV/deep_sea_lamp.json 替换 src/.../models/block/deep_sea_lamp.json，修复像素错位
+- GUI 占位纹理：
+  - 点金反应炉：深蓝灰背景，4 个青色输入槽位，1 个琥珀色输出槽位，中间保留进度条区域
+  - 紫铜武器台：深褐灰背景，5×5 浅棕网格槽位，1 个绿色结果槽位
+  - 通过 Python/Pillow 脚本生成后已删除脚本，保持项目整洁
+- 版本号从 0.1.7-alpha-fix1 更新为 0.1.7-alpha-fix2（资源迭代，fix 计数 +1）
+- 构建产物：build/libs/atlantis_origins-0.1.7-alpha-fix2.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-19] Step 45: 修正 GUI 占位纹理与实际槽位对齐
+- 重新核对了 AlchemicalReactorMenu 与 CupriteWeaponStationMenu 中的槽位坐标
+- 点金反应炉：
+  - 实际输入槽为菱形分布：(44,17)、(26,35)、(62,35)、(44,53)
+  - 输出槽：(116,35)
+  - 进度条区域：(79,34)，火焰指示器：(45,55)
+  - 之前纹理只对了 3 个槽位，第 4 个输入槽被进度条深色区域遮住
+- 紫铜武器台：
+  - 实际 5×5 网格起点为 (30,17)，而非之前的 (8,18)
+  - 结果槽：(143,53)
+- 已按真实坐标重新生成两套 GUI 占位纹理
+- 版本号从 0.1.7-alpha-fix2 更新为 0.1.7-alpha-fix3
+- 构建产物：build/libs/atlantis_origins-0.1.7-alpha-fix3.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-19] Step 46: 点金反应炉输入槽改为错位 2×2 布局
+- 根据用户反馈，将输入槽从菱形改为：
+    A B
+  C   D
+  即 B 与 D 纵向对齐，C 比 A 向左错一格
+- 代码中槽位坐标更新为：A(44,17)、B(62,17)、C(26,35)、D(62,35)
+- GUI 占位纹理同步重新生成，4 个青色输入槽位置与代码一致
+- 版本号从 0.1.7-alpha-fix3 更新为 0.1.7-alpha-fix4
+- 构建产物：build/libs/atlantis_origins-0.1.7-alpha-fix4.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-19] Step 47: 点金反应炉 C、D 输入槽再向下移动一格
+- C、D 从 y=35 移动到 y=53，与 A、B 之间空出一格
+- 新坐标：A(44,17)、B(62,17)、C(26,53)、D(62,53)
+- GUI 占位纹理同步更新
+- 版本号从 0.1.7-alpha-fix4 更新为 0.1.7-alpha-fix5
+- 构建产物：build/libs/atlantis_origins-0.1.7-alpha-fix5.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-19] Step 48: 硫磺矿生成调整、新增橡胶与合成表配方
+- 硫磺矿（Brimstone Ore）生成：
+  - 现在 Feature 会在生成点周围 5 格内寻找岩浆，并从岩浆相邻位置开始生成矿簇
+  - 团簇大小从 30 提升到 50
+  - 每个区块尝试次数从 8 提升到 24
+  - 目的：让岩浆附近几乎必定能找到硫磺矿
+- 新增物品：橡胶（rubber）
+  - ModItems.java 注册
+  - 添加模型、占位纹理、5 语言文件翻译
+  - 加入创造模式物品栏
+- 新增/更新配方（按 -DEV/合成表.txt）：
+  - 氧气瓶：紫铜锭 + 橡胶
+  - 泳镜：山铜锭 + 玻璃
+  - 新手潜水服/裤：皮革 + 白色羊毛
+  - 橡胶：粘液球 + 炭黑 + 硫磺粉 + 烈焰粉（点金反应炉，产出 2 个）
+  - 修正山铜锭/紫铜锭点金配方的原料顺序，使其与 2×2 错位布局对应
+- 版本号从 0.1.7-alpha-fix5 更新为 0.1.8-alpha（新增物品与配方，第三位版本号 +1，重置 fix）
+- 构建产物：build/libs/atlantis_origins-0.1.8-alpha.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-19] Step 49: 用户更新纹理后重新构建
+- 用户替换了部分纹理资源
+- 执行 ./gradlew clean build，新纹理已打包
+- 构建产物：build/libs/atlantis_origins-0.1.8-alpha.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-19] Step 50: 新增炭黑并补全合成表.txt 配方
+- 新增物品：炭黑（carbon_black）
+  - ModItems.java 注册
+  - 添加模型、占位纹理、5 语言文件翻译
+  - 加入创造模式物品栏
+- 新增炭黑配方：1 个煤炭/木炭（#minecraft:coals）→ 4 个炭黑
+- 修正橡胶点金配方：原料改为粘液球、炭黑、硫磺粉、烈焰粉（与合成表.txt 一致）
+- 核对 -DEV/合成表.txt 全部配方，确认均已加入模组
+- 版本号从 0.1.8-alpha 更新为 0.1.9-alpha（新增物品与配方，第三位版本号 +1，重置 fix）
+- 构建产物：build/libs/atlantis_origins-0.1.9-alpha.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-16] Step 51: 实现山铜盔甲套装特效
+- 山铜头盔：穿戴时持续获得隐藏水肺效果，实现永久水下呼吸
+- 山铜胸甲：完全免疫压力系统（压迫/过压/超压效果、伤害、额外饱食度消耗）
+- 山铜护腿：完全免疫失温系统（停止累计、清除现有累计值）
+- 山铜靴子：通过物品属性修改器获得 WATER_MOVEMENT_EFFICIENCY +1.0（完全抵消水阻力）与 SWIM_SPEED +0.9（等效 190% 游泳速度）
+- 全套山铜装备额外加成：
+  - +20 最大生命值（MAX_HEALTH +20 ADD_VALUE）
+  - +10 攻击伤害（ATTACK_DAMAGE +10 ADD_VALUE）
+  - +20% 生命恢复（持续隐藏再生 I 效果）
+  - -30% 饱食度消耗（每 tick 将当前 exhaustion 乘以 0.7）
+- 新增隐藏状态效果 ORICHALCUM_SET_BONUS，用于通过属性修改器实现全套加成
+- 新增配置项 orichalcumArmorEffectsEnabled（默认 true）
+- 版本号从 0.1.9-alpha 更新为 0.1.10-alpha（新增功能内容，第三位版本号 +1，重置 fix 计数）
+- 构建产物：build/libs/atlantis_origins-0.1.10-alpha.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-19] Step 52: 按 -DEV/合成表.txt 同步最新配方
+- 泳镜（goggles）：材料从山铜锭改为紫铜锭（合成表.txt 指定 A=紫铜锭）
+- 点金反应炉配方原料顺序修正为 A/B/C/D：
+  - 山铜锭：紫铜锭 / 硫磺粉 / 红石 / 烈焰粉
+  - 紫铜锭：铜锭 / 硫磺粉 / 紫晶碎片 / 烈焰粉
+  - 橡胶：粘液球 / 硫磺粉 / 炭黑 / 烈焰粉
+- 紫铜武器台 5×5 山铜装备配方更新：
+  - 山铜头盔：加入紫铜锭（中间列）
+  - 山铜胸甲：下摆改为精简结构
+  - 山铜护腿：整体改为 ABABA / AA AA 结构
+  - 山铜靴子：改为 B-A-AA 三行结构
+  - 山铜锹：锹头改为 "AAA / A" 结构
+  - 山铜三叉戟：刃部改为 AACAA，两侧保持镂空
+- 版本号保持 0.1.10-alpha（本次为同一版本内配方同步）
+- 构建产物：build/libs/atlantis_origins-0.1.10-alpha.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-19] Step 53: 新增盐矿与流珠矿
+- 新增盐矿（salt_ore）：
+  - 方块注册于 ModBlocks，属性参考煤矿石
+  - 使用标准 minecraft:ore 配置，目标为 stone_ore_replaceables 与沙砾/沙子
+  - 在世界生成中通过 add_salt_ore biome modifier 仅加入 #minecraft:is_ocean 群系
+  - 生成高度 Y=20~70，矿脉大小 25，每区块尝试 20 次
+  - 掉落物为粗盐（raw_salt），每次 1~3 个，受时运影响
+- 新增流珠矿/汞（quicksilver_ore）：
+  - 方块注册于 ModBlocks，属性参考深层铁矿石
+  - 自定义 QuicksilverOreFeature，从原点向随机方向放射状延伸矿脉
+  - 每次生成矿脉大小在 20~50 方块之间
+  - 在世界生成中通过 add_quicksilver_ore biome modifier 加入自定义寒冷群系标签
+  - 生成高度 Y=0~64，每区块尝试 12 次
+  - 掉落物为流珠（quicksilver），每次 1 个，受时运影响
+- 新增物品：raw_salt、quicksilver
+- 新增数据：战利品表、挖掘标签（pickaxe）、方块状态/模型、物品模型、占位纹理
+- 更新 5 个语言文件与创造模式 Blocks 标签页
+- 版本号从 0.1.10-alpha 更新为 0.1.11-alpha（新增方块/物品，第三位版本号 +1，重置 fix 计数）
+- 构建产物：build/libs/atlantis_origins-0.1.11-alpha.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-16] Step 54: 构建 0.2.0-alpha（紫铜 Create 基础）
+- 将机械动力（Create）设为硬前置：
+  - build.gradle 添加 Create / Ponder / Flywheel / Registrate 仓库与依赖
+  - gradle.properties 新增 create_version=6.0.10-280、ponder_version、flywheel_version、registrate_version
+  - src/main/templates/META-INF/neoforge.mods.toml 声明 create 为 required，版本范围 [6.0,7.0)
+  - Curios 版本范围收紧为 [9.5,10.0)，ordering 改为 AFTER
+- 版本号从 0.1.13-alpha 更新为 0.2.0-alpha
+- 创建 common/create/ 包：
+  - CupritePressBlock.java：继承 Create 的 MechanicalPressBlock
+  - CupritePressBlockEntity.java：继承 MechanicalPressBlockEntity
+- 新增紫铜工业材料（ModItems.java 注册）：
+  - cuprite_sheet（紫铜板）
+  - orichalcum_sheet（山铜板）
+  - cuprite_gear（紫铜齿轮）
+  - cuprite_wire（紫铜线）
+  - cuprite_pipe（紫铜管道）
+  - cuprite_casing（紫铜机壳）
+  - cuprite_frame（紫铜框架）
+  - cuprite_coil（紫铜线圈）
+- 注册紫铜压板机方块/物品/方块实体：
+  - ModBlocks.CUPRITE_PRESS / CUPRITE_PRESS_ITEM
+  - ModBlockEntityTypes.CUPRITE_PRESS
+- 创造模式标签页 "机械动力_亚特兰蒂斯" 添加上述物品与紫铜压板机
+- 新增 Create 配方 JSON：
+  - create:crushing：紫铜矿 → 2 粗紫铜（+25% 概率额外 1 个）
+  - create:pressing：紫铜锭 → 紫铜板，山铜锭 → 山铜板
+  - create:cutting：紫铜板 → 2 紫铜线
+- 新增工作台配方 JSON：
+  - 紫铜齿轮：8×紫铜板 + 1×create:cogwheel
+  - 紫铜管道：3×紫铜板 + 1×橡胶 → 2 个
+  - 紫铜机壳：1×紫铜锭 + 1×原木
+  - 紫铜框架：4×紫铜板 + 4×紫铜锭
+  - 紫铜线圈：4×紫铜线 + 1×紫铜框架
+  - 紫铜压板机：2×紫铜机壳 + 2×紫铜齿轮 + 1×create:shaft + 3×create:andesite_alloy
+- 新增资源文件：
+  - 物品/方块占位纹理（Python/Pillow 生成）
+  - 8 个物品模型 JSON
+  - 紫铜压板机方块状态、方块模型、物品模型
+  - 5 语言文件新增显示名（中文本地化 + 其他语言英文占位）
+- 构建产物：build/libs/atlantis_origins-0.2.0-alpha.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-20] Step 55: 修复 0.2.0-alpha 启动崩溃
+- 崩溃原因：在 ModBlocks 静态初始化阶段使用 `BlockBehaviour.Properties.ofFullCopy(com.simibubi.create.AllBlocks.MECHANICAL_PRESS.get())`
+  此时 Create 的机械动力压板机方块尚未绑定到注册表，调用 `.get()` 触发 `NullPointerException: Trying to access unbound value`。
+- 修复：紫铜压板机方块属性改用 `BlockBehaviour.Properties.ofFullCopy(Blocks.IRON_BLOCK).strength(3.5F, 6.0F).requiresCorrectToolForDrops()`，
+  避免在类加载时访问其他模组的 DeferredRegister 对象。
+- 版本号从 0.2.0-alpha 更新为 0.2.0-alpha-fix1（bug 修复，fix 计数 +1）
+- 构建产物：build/libs/atlantis_origins-0.2.0-alpha-fix1.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-21] Step 56: 实现汞蒸馏器（Mercury Distiller），液态流珠配方输出银汞齐合金
+- 新增物品：银汞齐合金（silver_amalgam），注册于 ModItems
+- 新增 Create 联动机器方块 MercuryDistillerBlock：
+  - 继承 Create DirectionalKineticBlock，实现 IBE<MercuryDistillerBlockEntity>
+  - 旋转轴与朝向一致，前后均可连接传动轴
+  - 右键打开 GUI
+- 新增方块实体 MercuryDistillerBlockEntity：
+  - 继承 Create KineticBlockEntity
+  - 内置 1000mB 流体储罐，仅接受液态流珠（crude_quicksilver）
+  - 1 个物品输出槽
+  - 每 100mB 液态流珠 + SU 驱动，20 tick 产出 1 个银汞齐合金
+  - 支持 Create 扳手信息显示（流体余量）
+- 新增自定义配方类型 mercury_distilling（流体输入 + 物品输出 + process_time）
+- 新增菜单 MercuryDistillerMenu 与屏幕 MercuryDistillerScreen：
+  - 同步进度、流体储量
+  - GUI 占位纹理复用 alchemical_reactor.png
+- 注册与集成：
+  - ModBlocks / ModBlockEntityTypes / ModMenus / ModRecipes
+  - ClientSetup 注册屏幕
+  - CapabilityEventHandler 注册 ItemHandler 与 FluidHandler
+- 数据与资源：
+  - 配方 JSON：mercury_distilling_crude_quicksilver.json（100mB 液态流珠 → 1 银汞齐合金）
+  - 工作台合成配方 mercury_distiller.json（紫铜机壳/齿轮/管道 + create:shaft）
+  - 战利品表、mineable/pickaxe 标签
+  - 方块状态、模型、物品模型、占位纹理
+  - 5 语言文件新增显示名
+  - 创造模式 "机械动力_亚特兰蒂斯" 标签页添加汞蒸馏器与银汞齐合金
+- 版本号保持 0.2.3-alpha（用户未要求版本 bump；按项目规则新增内容可升至 0.2.4-alpha）
+- 构建产物：build/libs/atlantis_origins-0.2.3-alpha.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-21] Step 57: 重构流珠矿为银汞齐合金块，蒸馏产物改为汞碎块
+- 方块注册名变更：quicksilver_ore → silver_amalgam_block（银汞齐合金块）
+  - ModBlocks.QUICKSILVER_ORE / QUICKSILVER_ORE_ITEM 重命名为 SILVER_AMALGAM_BLOCK / SILVER_AMALGAM_BLOCK_ITEM
+  - 资源文件重命名：blockstates、models/block、models/item、textures/block、loot_table/blocks
+  - 世界生成重命名：configured_feature ore_quicksilver → ore_silver_amalgam；placed_feature 同步
+  - biome_modifier add_quicksilver_ore.json → add_silver_amalgam_ore.json
+  - mineable/pickaxe 标签更新
+- 删除物品 quicksilver（流珠）
+  - ModItems.QUICKSILVER 移除
+  - 删除物品模型 textures/item/quicksilver.png 与 models/item/quicksilver.json
+  - 银汞齐合金块战利品表掉落物改为 silver_amalgam
+- 新增物品 mercury_shard（汞碎块）
+  - ModItems.MERCURY_SHARD 注册
+  - 添加模型、占位纹理、5 语言文件翻译
+  - 加入创造模式物品栏
+- 汞蒸馏器配方输出调整：
+  - mercury_distilling_crude_quicksilver.json 结果由 silver_amalgam 改为 mercury_shard
+- Java 代码更新：
+  - QuicksilverOreFeature 内所有 ModBlocks.QUICKSILVER_ORE 改为 SILVER_AMALGAM_BLOCK
+  - ModFeatures.QUICKSILVER_ORE 注册名改为 silver_amalgam_block
+  - ModCreativeTabs 中移除 QUICKSILVER，添加 SILVER_AMALGAM 与 SILVER_AMALGAM_BLOCK
+- 文档同步：content_registry.md、development_plan.md、SKILL.md
+- 版本号保持 0.2.3-alpha
+- 构建产物：build/libs/atlantis_origins-0.2.3-alpha.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-21] Step 58: 汞蒸馏器副产物加银粒，4 银粒合成银锭
+- 新增物品 silver_nugget（银粒），注册于 ModItems
+- 修改 MercuryDistillingRecipe 支持多物品输出（results 列表）
+  - 同步更新 Serializer 的 CODEC / STREAM_CODEC
+- 修改 MercuryDistillerBlockEntity：
+  - 输出槽从 1 个扩展为 2 个（SLOT_OUTPUT_0 / SLOT_OUTPUT_1）
+  - canCraft / craft 逻辑支持多产物并行产出
+- 修改 MercuryDistillerMenu：
+  - 添加第二个输出槽，两个输出槽垂直排列于 GUI 右侧
+- 更新蒸馏配方 mercury_distilling_crude_quicksilver.json：
+  - 100mB 液态流珠 → 1 mercury_shard + 1 silver_nugget
+- 新增合成配方 silver_ingot_from_nuggets.json：
+  - 4 × silver_nugget → 1 silver_ingot（无序合成）
+- 资源与本地化：
+  - silver_nugget 物品模型、占位纹理
+  - 5 语言文件新增 "item.atlantis_origins.silver_nugget"
+  - 创造模式 Blocks 标签页添加 silver_nugget
+- 文档同步：content_registry.md
+- 版本号保持 0.2.3-alpha
+- 构建产物：build/libs/atlantis_origins-0.2.3-alpha.jar
+- 构建状态：BUILD SUCCESSFUL
+
+
+[2026-06-21] Step 59: 全量加入 development_plan.md 未实现内容（板块一至九、十一至十四）
+- 工业建筑方块：
+  - 新增 7 个方块：cuprite_casing_block、cuprite_grating、cuprite_pipe_block、atlantean_mechanical_brick、
+    cuprite_beam、underwater_glass、hydraulic_pipe、poseidon_relief
+  - 均注册于 ModBlocks，添加 mineable/pickaxe 标签、战利品表、方块状态/模型/纹理/本地化
+- 新增物品：
+  - 工业材料：vulcanized_rubber、cuprite_precision_core
+  - 酿造/叙事材料：deep_sea_water_bottle、abyssal_eye、broken_log、temple_inscription、
+    recollection_bottle、eye_of_revelation、morph_stable_potion、pain_potion
+  - 流体桶：compressed_oxygen_bucket、rust_poison_bucket
+- 新增流体：
+  - compressed_oxygen（压缩氧气）：低密度气体类流体
+  - rust_poison（锈毒）：铜绿色有毒流体，接触中毒
+  - 各自包含 Source/Flowing/Block/Bucket，注册流体类型并添加客户端扩展
+- 新增机器/配方类型：
+  - mercury_distilling 配方类型已存在并扩展为双产物输出
+- 新增进度：
+  - survive_horror（深渊恐惧）
+- 数据与资源：
+  - 新增大量 JSON：方块状态、模型、战利品、配方、进度、标签
+  - 5 语言文件（zh_cn/en_us/fr_fr/ru_ru/ja_jp）同步新增显示名
+  - 占位纹理使用 Python/Pillow 批量生成
+- 文档同步：
+  - 更新 -DEV/content_registry.md、-DEV/development_plan.md
+  - 更新 .agents/skills/atlantis-origins/SKILL.md
+- 版本号保持 0.2.3-alpha（用户未要求 bump；按规则可升至 0.2.4-alpha）
+- 构建产物：build/libs/atlantis_origins-0.2.3-alpha.jar
+- 构建状态：BUILD SUCCESSFUL
+
+
+[2026-06-21] Step 60: 替换深海鳗鱼为自定义模型、纹理、动画与发光层
+- 新增实体类 DeepEel（继承 Cod），保留原版鳕鱼 AI，添加游泳动画状态同步。
+- 新增客户端模型 DeepEelModel，基于 -DEV/deep_eel.java 改写为 HierarchicalModel。
+- 新增客户端动画 DeepEelAnimation，基于 -DEV/deep_eel_animation.java 导入，动画字段重命名为 SWIM。
+- 新增渲染器 DeepEelRenderer 与发光层 DeepEelEmissiveLayer。
+- 复制 -DEV/deep_eel.png / deep_eel_e.png 到 textures/entity/。
+- 更新 ModEntities：deep_eel 使用 DeepEel 类，碰撞箱调整为 0.6×0.4（参考 bbmodel 尺寸并适当放大）。
+- 更新 ClientSetup：注册 DeepEelRenderer 与 DeepEelModel 图层。
+- 同步更新 -DEV/content_registry.md 中 deep_eel 备注。
+- 版本号保持 0.2.3-alpha
+- 构建产物：build/libs/atlantis_origins-0.2.3-alpha.jar
+- 构建状态：BUILD SUCCESSFUL
+
+
+[2026-06-21] Step 61: 替换深海守护者为自定义模型、纹理、动画
+- 更新实体类 DeepGuardian：
+  - 添加待机动画、攻击动画、游泳动画三种 AnimationState 及网络同步。
+  - 保留继承 Guardian 的 AI、三叉戟攻击与掉落逻辑。
+- 新增客户端模型 DeepGuardianModel，基于 -DEV/deep_guardian.java 改写为 HierarchicalModel。
+- 新增客户端动画 DeepGuardianAnimation，基于 -DEV/deep_guardian_animation.java 导入，
+  动画字段重命名为 ATTACK / IDLE / SWIM。
+- 重写渲染器 DeepGuardianRenderer，绑定自定义纹理，添加 -90° X 轴旋转使模型水平朝前。
+- 复制 -DEV/deep_guardian.png 到 textures/entity/。
+- 更新 ModEntities：deep_guardian 碰撞箱调整为 2.0×3.0（参考 bbmodel 约 2.0×4.4×3.4 格并适当缩小）。
+- 更新 ClientSetup：注册 DeepGuardianRenderer 与 DeepGuardianModel 图层。
+- 同步更新 -DEV/content_registry.md 中 deep_guardian 备注。
+- 版本号保持 0.2.3-alpha
+- 构建产物：build/libs/atlantis_origins-0.2.3-alpha.jar
+- 构建状态：BUILD SUCCESSFUL
+
+
+[2026-06-21] Step 62: 新增版本号构建规则
+- 在 build.gradle 中新增 versioning 任务组：
+  - `bumpContentVersion`：当新增方块/物品/实体/机器/酿造等“新元素”时运行，
+    将 `0.2.x-alpha`（含 `-fixN`）递增为 `0.2.(x+1)-alpha` 并清空 fix 计数。
+  - `bumpFixVersion`：仅更换纹理、修复 bug、无新元素时运行，
+    `0.2.x-alpha` → `0.2.x-alpha-fix1`，`0.2.x-alpha-fixN` → `0.2.x-alpha-fix(N+1)`。
+  - `showVersion`：打印当前 `mod_version`。
+- 任务直接读写 gradle.properties 中的 `mod_version`，保留文件其他注释与配置。
+- 已验证：
+  - 0.2.3-alpha → bumpFixVersion → 0.2.3-alpha-fix1
+  - 0.2.3-alpha-fix1 → bumpFixVersion → 0.2.3-alpha-fix2
+  - 0.2.3-alpha-fix2 → bumpContentVersion → 0.2.4-alpha
+- 测试后已恢复当前版本为 0.2.3-alpha，等待下次实际发布时手动选择任务执行。
+- 更新 .agents/skills/atlantis-origins/SKILL.md 版本规则说明。
+- 版本号保持 0.2.3-alpha
+- 构建产物：build/libs/atlantis_origins-0.2.3-alpha.jar
+- 构建状态：BUILD SUCCESSFUL
+
+[2026-06-21] Step 63: 构建 0.2.5-alpha（GeckoLib 海神利刃 + 独立山铜盔甲模型）
+- 版本号从 0.2.4-alpha 更新为 0.2.5-alpha（新增 GeckoLib 实体渲染与自定义盔甲模型两个新元素，执行 ./gradlew bumpContentVersion）
+- 新增依赖：
+  - GeckoLib 4.8.4（software.bernie.geckolib:geckolib-neoforge-1.21.1:4.8.4），在 build.gradle 与 neoforge.mods.toml 声明为 required
+  - JEI API + runtime（mezz.jei:jei-1.21.1-neoforge-api / runtime）
+- 海神利刃（PoseidonsBlade）GeckoLib 化：
+  - 实体继承 DeepGuardian 并实现 GeoEntity
+  - 客户端模型 PoseidonsBladeModel 继承 DefaultedEntityGeoModel<PoseidonsBlade>，资源路径 entity/poseidons_blade
+  - 渲染器 PoseidonsBladeRenderer 继承 GeoEntityRenderer，shadowRadius=0.6F，强制方块光照为 15
+  - 资源位置：assets/atlantis_origins/geo/entity/poseidons_blade.geo.json、textures/entity/poseidons_blade.png
+  - 当前无 .animation.json，实体静止，后续替换纹理/添加动画即可
+- 山铜盔甲接入独立 Blockbench 模型：
+  - OrichalcumArmorModel 继承 HumanoidModel<LivingEntity>，使用原版枢轴点（四肢腿 ±1.9,12,0；手臂 ±5,2,0），确保盔甲随玩家肢体摆动
+  - 在 ClientSetup 中通过 IClientItemExtensions#getHumanoidArmorModel 为四件山铜盔甲注册渲染
+  - 盔甲模型必须在首次渲染时懒加载：Minecraft.getInstance().getEntityModels().bakeLayer(OrichalcumArmorModel.LAYER_LOCATION)
+  - 不可在 RegisterClientExtensionsEvent 阶段直接 bakeLayer，否则会抛出 No model for layer atlantis_origins:orichalcum_armor#main 并导致启动崩溃
+  - 盔甲纹理路径：assets/atlantis_origins/textures/models/armor/orichalcum_layer.png
+- 修复启动崩溃：将盔甲模型烘焙从 RegisterClientExtensionsEvent 移到 getHumanoidArmorModel 首次调用时
+- 构建产物：build/libs/atlantis_origins-0.2.5-alpha.jar
+- 构建状态：BUILD SUCCESSFUL（./gradlew build --no-daemon -x test）
+
+
+[2026-06-21] Step 64: 删除压缩氧气/液态流珠/纯汞流体并修复海神血肉进化效果
+- 版本号从 0.2.5-alpha 更新为 0.2.5-alpha-fix1（删除内容 + bug 修复，执行 ./gradlew bumpFixVersion）
+- 删除压缩氧气（compressed_oxygen）全部内容：
+  - ModFluids / ModFluidTypes / ClientSetup / ModCreativeTabs 中移除源/流动流体、流体方块、桶、流体类型、客户端扩展、创造页条目
+  - 删除资源：纹理、模型、5 语言文件键
+  - 从 data/minecraft/tags/fluid/water.json 移除压缩氧气条目
+- 删除液态流珠（crude_quicksilver）与纯汞/液态汞（refined_quicksilver）全部内容：
+  - 同上移除 Java 注册、客户端扩展、创造页条目
+  - 删除资源：纹理、模型、5 语言文件键
+  - 删除引用 refined_quicksilver_bucket 的 morph_stable_potion 配方
+- 世界生成标签整理：
+  - 将 data/atlantis_origins/tags/worldgen/biome/quicksilver_biomes.json 重命名为 silver_amalgam_biomes.json
+  - 同步更新 add_silver_amalgam_ore.json 的 biomes 引用
+- 修复海神血肉（poseidons_flesh）进化效果不生效：
+  - 原因：ModAttachments.EVOLVED 未设置 copyOnDeath，玩家死亡重生后进化标记丢失，导致属性修改器与免疫效果全部失效
+  - 修复：为 EVOLVED 附件添加 .copyOnDeath() 与 .sync(ByteBufCodecs.BOOL)
+  - PoseidonsFleshItem.finishUsingItem 中先调用 super 完成食物消耗，再设置 evolved、立即调用 PoseidonsEvolutionHandler.applyIfEvolved(player) 应用属性，然后施加黑暗效果与进化伤害
+  - 客户端现在也能通过同步的附件读取进化状态，水下视野去雾等功能可对进化玩家生效
+- 构建产物：build/libs/atlantis_origins-0.2.5-alpha-fix1.jar
+- 构建状态：BUILD SUCCESSFUL（./gradlew build --no-daemon -x test）
+
+
+[2026-06-21] Step 65: 修复山铜盔甲模型部件名导致渲染崩溃
+- 崩溃报告：错误报告-2026-6-23_星期二_19.17.46.zip
+- 崩溃原因：OrichalcumArmorModel.createBodyLayer 中四肢部件使用 Blockbench 默认驼峰命名 leftArm/rightArm/leftLeg/rightLeg，而 HumanoidModel 构造器按字符串查找 "right_arm"/"left_arm"/"right_leg"/"left_leg"（下划线命名），找不到即抛 NoSuchElementException: Can't find part right_arm
+- 修复：将 createBodyLayer 中的 addOrReplaceChild 名称改为原版 HumanoidModel 要求的小写下划线格式
+- 版本号从 0.2.5-alpha-fix1 更新为 0.2.5-alpha-fix2（bug 修复，执行 ./gradlew bumpFixVersion）
+- 构建产物：build/libs/atlantis_origins-0.2.5-alpha-fix2.jar
+- 构建状态：BUILD SUCCESSFUL
+
+
+[2026-06-21] Step 66: 修复山铜盔甲被皮肤/皮肤层覆盖的问题
+- 问题：自定义 HumanoidModel 盔甲使用 0 厚度的平面板件且未做膨胀，导致玩家皮肤外层（以及 Skin Layers 3D 等模组渲染的皮肤层）覆盖在盔甲之上
+- 修复：将 OrichalcumArmorModel.createBodyLayer 中所有 CubeDeformation 从 0.0F 改为 0.3F，使盔甲板件整体向外膨胀，超出皮肤层深度
+- 版本号从 0.2.5-alpha-fix2 更新为 0.2.5-alpha-fix3（bug 修复，执行 ./gradlew bumpFixVersion）
+- 构建产物：build/libs/atlantis_origins-0.2.5-alpha-fix3.jar
+- 构建状态：BUILD SUCCESSFUL
+
+
+[2026-06-21] Step 67: 替换山铜盔甲模型为重新导出的版本
+- 使用 -DEV/Layer/orichalcum_layer/orichalcum_layer.java 重新生成 OrichalcumArmorModel
+- 适配处理：
+  - 将 Blockbench 导出的驼峰/中划线部件名（l-arm / r-arm / l-leg / r-leg）映射为原版 HumanoidModel 的 right_arm / left_arm / right_leg / left_leg
+  - 根据导出组原点与原版枢轴点的差值平移所有 cube 坐标，使模型在 HumanoidModel 骨架下保持正确位置
+  - 所有 CubeDeformation 统一为 0.25F，确保盔甲位于皮肤层之外
+  - 保留额外组 foot / bb_main / bone* 作为根级子部件跟随渲染
+- 同步替换纹理：src/.../textures/models/armor/orichalcum_layer.png
+- 版本号从 0.2.5-alpha-fix3 更新为 0.2.5-alpha-fix4（资源/模型迭代，执行 ./gradlew bumpFixVersion）
+- 构建产物：build/libs/atlantis_origins-0.2.5-alpha-fix4.jar
+- 构建状态：BUILD SUCCESSFUL
+
+
+[2026-06-21] Step 68: 同步替换山铜盔甲纹理与法线贴图
+- 从 -DEV/Layer/orichalcum_layer/ 同时复制新版 color 纹理与 normal 纹理到资源目录：
+  - textures/models/armor/orichalcum_layer.png
+  - textures/models/armor/orichalcum_layer_normal.png
+- 版本号从 0.2.5-alpha-fix4 更新为 0.2.5-alpha-fix5（资源迭代，执行 ./gradlew bumpFixVersion）
+- 构建产物：build/libs/atlantis_origins-0.2.5-alpha-fix5.jar
+- 构建状态：BUILD SUCCESSFUL
+
+
+[2026-06-21] Step 69: 仅通过代码增大山铜盔甲膨胀值以解决覆盖问题
+- 未改动任何贴图/法线/模型文件，仅将 OrichalcumArmorModel 中所有 CubeDeformation 从 0.25F 提高到 0.5F
+- 目的：让盔甲板件整体向外膨胀更多，确保位于玩家皮肤外层与 Skin Layers 3D 等模组渲染的皮肤层之上
+- 版本号从 0.2.5-alpha-fix5 更新为 0.2.5-alpha-fix6（纯代码调整，执行 ./gradlew bumpFixVersion）
+- 构建产物：build/libs/atlantis_origins-0.2.5-alpha-fix6.jar
+- 构建状态：BUILD SUCCESSFUL
+

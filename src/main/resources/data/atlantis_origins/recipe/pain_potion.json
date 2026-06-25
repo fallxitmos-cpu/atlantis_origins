@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    {
+      "item": "atlantis_origins:pain_crystal"
+    },
+    {
+      "item": "atlantis_origins:raw_salt"
+    },
+    {
+      "item": "atlantis_origins:deep_sea_water_bottle"
+    }
+  ],
+  "result": {
+    "id": "atlantis_origins:pain_potion"
+  }
+}

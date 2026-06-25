@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    "A A",
+    "ABA",
+    "AAA"
+  ],
+  "key": {
+    "A": {"item": "minecraft:leather"},
+    "B": {"item": "minecraft:white_wool"}
+  },
+  "result": {
+    "id": "atlantis_origins:beginner_diving_suit",
+    "count": 1
+  }
+}

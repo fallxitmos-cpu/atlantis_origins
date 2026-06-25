@@ -1,0 +1,13 @@
+{
+  "type": "neoforge:add_features",
+  "biomes": "#minecraft:is_overworld",
+  "features": [
+    "atlantis_origins:ore_cuprite",
+    "atlantis_origins:ore_cuprite_large",
+    "atlantis_origins:ore_orichalcum",
+    "atlantis_origins:ore_orichalcum_large",
+    "atlantis_origins:ore_brimstone",
+    "atlantis_origins:ore_silver"
+  ],
+  "step": "underground_ores"
+}

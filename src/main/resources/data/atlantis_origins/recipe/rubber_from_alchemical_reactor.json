@@ -1,0 +1,13 @@
+{
+  "type": "atlantis_origins:alchemical_reactor",
+  "ingredients": [
+    {"item": "minecraft:slime_ball"},
+    {"item": "atlantis_origins:brimstone_dust"},
+    {"item": "atlantis_origins:carbon_black"},
+    {"item": "minecraft:blaze_powder"}
+  ],
+  "result": {
+    "id": "atlantis_origins:rubber",
+    "count": 2
+  }
+}

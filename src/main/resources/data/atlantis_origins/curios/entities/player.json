@@ -1,0 +1,9 @@
+{
+  "entities": [
+    "minecraft:player"
+  ],
+  "slots": [
+    "oxygen_tank",
+    "goggles"
+  ]
+}

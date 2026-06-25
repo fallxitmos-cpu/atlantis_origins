@@ -1,0 +1,19 @@
+{
+  "type": "atlantis_origins:cuprite_weapon_station",
+  "pattern": [
+    "AAAAA",
+    "  B  ",
+    "  B  ",
+    "  B  ",
+    "  C  "
+  ],
+  "key": {
+    "A": {"item": "atlantis_origins:orichalcum_ingot"},
+    "B": {"item": "atlantis_origins:orichalcum_stick"},
+    "C": {"item": "atlantis_origins:cuprite_ingot"}
+  },
+  "result": {
+    "id": "atlantis_origins:orichalcum_pickaxe",
+    "count": 1
+  }
+}

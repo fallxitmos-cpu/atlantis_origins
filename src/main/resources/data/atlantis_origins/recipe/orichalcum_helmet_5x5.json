@@ -1,0 +1,16 @@
+{
+  "type": "atlantis_origins:cuprite_weapon_station",
+  "pattern": [
+    "AAAAA",
+    "A B A",
+    "A   A"
+  ],
+  "key": {
+    "A": {"item": "atlantis_origins:orichalcum_ingot"},
+    "B": {"item": "atlantis_origins:cuprite_ingot"}
+  },
+  "result": {
+    "id": "atlantis_origins:orichalcum_helmet",
+    "count": 1
+  }
+}

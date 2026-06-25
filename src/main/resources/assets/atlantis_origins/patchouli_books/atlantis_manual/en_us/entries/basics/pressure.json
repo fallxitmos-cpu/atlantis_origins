@@ -1,0 +1,11 @@
+{
+  "name": "Pressure",
+  "icon": "atlantis_origins:flipper",
+  "category": "atlantis_origins:basics",
+  "pages": [
+    {
+      "type": "patchouli:text",
+      "text": "The deeper you swim, the greater the pressure.$(br2)Below Y 35 you will feel oppression. Below Y 20 the overpressure begins to deal true damage. At Y 0 and below, horror sets in: your vision distorts, exhaustion rises, and the damage becomes severe."
+    }
+  ]
+}
