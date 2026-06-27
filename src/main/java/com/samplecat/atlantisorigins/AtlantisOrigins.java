@@ -12,6 +12,7 @@ import com.samplecat.atlantisorigins.common.curios.ModCurios;
 import com.samplecat.atlantisorigins.common.damage.ModDamageTypes;
 import com.samplecat.atlantisorigins.common.effect.ModMobEffects;
 import com.samplecat.atlantisorigins.common.entity.ModEntities;
+import com.samplecat.atlantisorigins.common.ai.SquadEvents;
 import com.samplecat.atlantisorigins.common.event.CapabilityEventHandler;
 import com.samplecat.atlantisorigins.common.event.TridentEventHandler;
 import com.samplecat.atlantisorigins.common.fluid.ModFluidTypes;
@@ -20,6 +21,7 @@ import com.samplecat.atlantisorigins.common.item.ModItems;
 import com.samplecat.atlantisorigins.common.menu.ModMenus;
 import com.samplecat.atlantisorigins.common.menu.recipe.ModRecipes;
 import com.samplecat.atlantisorigins.common.network.ModNetwork;
+import com.samplecat.atlantisorigins.common.world.OverworldBiomeInjector;
 import com.samplecat.atlantisorigins.common.world.feature.ModFeatures;
 import com.samplecat.atlantisorigins.data.ModCreativeTabs;
 
@@ -43,6 +45,8 @@ public class AtlantisOrigins {
         modEventBus.addListener(CapabilityEventHandler::onRegisterCapabilities);
 
         NeoForge.EVENT_BUS.register(TridentEventHandler.class);
+        NeoForge.EVENT_BUS.register(SquadEvents.class);
+        NeoForge.EVENT_BUS.register(OverworldBiomeInjector.class);
 
         ModItems.ITEMS.register(modEventBus);
         ModBlocks.BLOCKS.register(modEventBus);
@@ -92,6 +96,7 @@ public class AtlantisOrigins {
         event.put(ModEntities.DEEP_GUARDIAN.get(),
                 net.minecraft.world.entity.monster.Guardian.createAttributes()
                         .add(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH, 60.0)
+                        .add(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED, 0.75)
                         .build());
         event.put(ModEntities.POSEIDONS_BLADE.get(),
                 com.samplecat.atlantisorigins.common.entity.PoseidonsBlade.createAttributes().build());

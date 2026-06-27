@@ -88,6 +88,7 @@ public class ModEntities {
             "poseidons_blade",
             () -> EntityType.Builder.of(PoseidonsBlade::new, MobCategory.MONSTER)
                     .sized(1.0F, 1.0F)
+                    .eyeHeight(56.0F / 16.0F)
                     .clientTrackingRange(8)
                     .build(AtlantisOrigins.MOD_ID + ":poseidons_blade"));
 

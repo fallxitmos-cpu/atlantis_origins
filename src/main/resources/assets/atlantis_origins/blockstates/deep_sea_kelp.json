@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "fruit=false": {
+      "model": "atlantis_origins:block/deep_sea_kelp"
+    },
+    "fruit=true": {
+      "model": "atlantis_origins:block/deep_sea_kelp_fruit"
+    }
+  }
+}

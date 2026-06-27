@@ -83,6 +83,15 @@ public class ModItems {
     public static final DeferredItem<Item> CARBON_BLACK = ITEMS.register(
             "carbon_black", () -> new Item(new Item.Properties()));
 
+    public static final DeferredItem<Item> GLOWING_SEED_CLUSTER = ITEMS.register(
+            "glowing_seed_cluster", () -> new Item(new Item.Properties()));
+
+    public static final DeferredItem<Item> RAW_SILICONE = ITEMS.register(
+            "raw_silicone", () -> new Item(new Item.Properties()));
+
+    public static final DeferredItem<Item> SILICONE = ITEMS.register(
+            "silicone", () -> new Item(new Item.Properties()));
+
     public static final DeferredItem<Item> RAW_CUPRITE = ITEMS.register(
             "raw_cuprite", () -> new Item(new Item.Properties()));
 
@@ -166,9 +175,6 @@ public class ModItems {
 
     public static final DeferredItem<Item> KRILL_PASTE_BREAD = ITEMS.register(
             "krill_paste_bread", () -> new Item(new Item.Properties().food(ModFoods.KRILL_PASTE_BREAD)));
-
-    public static final DeferredItem<Item> DEEP_SEA_KELP = ITEMS.register(
-            "deep_sea_kelp", () -> new Item(new Item.Properties().food(ModFoods.DEEP_SEA_KELP)));
 
     public static final DeferredItem<Item> KELP_ROLL = ITEMS.register(
             "kelp_roll", () -> new Item(new Item.Properties().food(ModFoods.KELP_ROLL)));
