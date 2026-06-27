@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:smelting",
+  "cookingtime": 200,
+  "experience": 0.35,
+  "ingredient": {
+    "item": "atlantis_origins:glowing_seed_cluster"
+  },
+  "result": {
+    "id": "atlantis_origins:raw_silicone"
+  }
+}

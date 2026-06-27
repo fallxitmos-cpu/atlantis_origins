@@ -1,0 +1,6 @@
+{
+  "type": "neoforge:add_features",
+  "biomes": "#minecraft:is_ocean",
+  "features": "atlantis_origins:deep_sea_kelp",
+  "step": "vegetal_decoration"
+}

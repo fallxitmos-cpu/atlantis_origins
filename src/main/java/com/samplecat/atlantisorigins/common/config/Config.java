@@ -45,5 +45,9 @@ public class Config {
             .comment("Whether Orichalcum armor piece bonuses and full-set bonuses are enabled")
             .define("orichalcumArmorEffectsEnabled", true);
 
+    public static final ModConfigSpec.BooleanValue INJECT_OVERWORLD_BIOMES = BUILDER
+            .comment("Inject green_algae_sea / green_algae_deep_sea into the Overworld multi-noise biome source")
+            .define("injectOverworldBiomes", true);
+
     public static final ModConfigSpec SPEC = BUILDER.build();
 }

@@ -38,7 +38,6 @@ public class ModCreativeTabs {
                         output.accept(ModItems.ORICHALCUM_SHOVEL.get());
                         output.accept(ModItems.ORICHALCUM_HOE.get());
                         output.accept(ModItems.ORICHALCUM_TRIDENT.get());
-                        output.accept(ModItems.DEEP_GUARDIAN_TRIDENT.get());
                         output.accept(ModItems.ORICHALCUM_HELMET.get());
                         output.accept(ModItems.ORICHALCUM_CHESTPLATE.get());
                         output.accept(ModItems.ORICHALCUM_LEGGINGS.get());
@@ -68,6 +67,9 @@ public class ModCreativeTabs {
                         output.accept(ModItems.RAW_SALT.get());
                         output.accept(ModItems.RUBBER.get());
                         output.accept(ModItems.CARBON_BLACK.get());
+                        output.accept(ModItems.GLOWING_SEED_CLUSTER.get());
+                        output.accept(ModItems.RAW_SILICONE.get());
+                        output.accept(ModItems.SILICONE.get());
                         output.accept(ModFluids.RUST_POISON_BUCKET.get());
                     }).build());
 
@@ -118,7 +120,8 @@ public class ModCreativeTabs {
                         output.accept(ModItems.KRILL.get());
                         output.accept(ModItems.KRILL_PASTE.get());
                         output.accept(ModItems.KRILL_PASTE_BREAD.get());
-                        output.accept(ModItems.DEEP_SEA_KELP.get());
+                        output.accept(ModBlocks.DEEP_SEA_KELP_ITEM.get());
+                        output.accept(ModItems.GLOWING_SEED_CLUSTER.get());
                         output.accept(ModItems.KELP_ROLL.get());
                         output.accept(ModItems.SALTED_FISH.get());
                         output.accept(ModItems.DEEP_SEA_STEW.get());

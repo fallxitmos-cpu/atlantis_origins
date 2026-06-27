@@ -17,4 +17,7 @@ public class ModFeatures {
 
     public static final Supplier<Feature<NoneFeatureConfiguration>> SILVER_AMALGAM_BLOCK = FEATURES.register(
             "silver_amalgam_block", () -> new QuicksilverOreFeature(NoneFeatureConfiguration.CODEC));
+
+    public static final Supplier<Feature<NoneFeatureConfiguration>> DEEP_SEA_KELP = FEATURES.register(
+            "deep_sea_kelp", () -> new DeepSeaKelpFeature(NoneFeatureConfiguration.CODEC));
 }

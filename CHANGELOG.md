@@ -5,7 +5,27 @@
 
 ## [Unreleased]
 
+### 新增
+- **深海水藻（Deep Sea Kelp）**：
+  - 注册方块 `deep_sea_kelp`，占地 1×1，无碰撞体积；纹理暂时复用原版发光浆果。
+  - 受随机刻影响，顶部主方块可向上生长，直到上方不再是水源；植株越高生长越慢，倍率按 `0.6 * e^(0.15*(15-x))` 计算（x 为植株高度）。
+  - 随机刻会将下方 solid 方块转换为苔藓块，同样受高度倍率影响。
+  - 方块现在会含水（`waterlogged`），生成/破坏时保留海水。
+  - 结果状态（`fruit=true`）光照等级为 10。
+  - 方块状态 `fruit` + 隐藏属性 `abundance`（0–7，实际掉落倍率 +1）控制产量；成熟后丰度为 1，随机刻可继续提升至 8。
+  - 右键可收获果实，破坏任意方块会移除整株并掉落被挖方块的产物。
+  - 自然生成于 `#minecraft:is_ocean` 群系、Y < 35 的海底地面。
+  - 新增群系 **绿藻海域** / **绿藻深海**，水色与沼泽相近，海底以苔藓块、石头、沙砾为主，深海海藻大量生成。
+  - 新增对应维度 `atlantis_origins:green_algae_sea` 与 `atlantis_origins:green_algae_deep_sea`（可用命令 `/execute in ...` 进入），分别对应平均海床 Y≈30 与 Y≈10 的平坦海域。
+- **荧光种子簇（Glowing Seed Cluster）**：深海水藻果实收获/破坏时掉落，用于加工硅胶。
+- **粗制硅胶（Raw Silicone）**：荧光种子簇在熔炉中烧制获得。
+- **硅胶（Silicone）**：工作台中 1 粗制硅胶 + 1 硫磺粉 → 2 硅胶。
+
+### 优化
+- **深海水藻**：重构为继承原版 `GrowingPlantHeadBlock`/`GrowingPlantBodyBlock`，新增 `deep_sea_kelp_plant` 作为身体段，复用原版生长/连接/更新逻辑，同时保留 `fruit`/`abundance` 自定义状态与整株移除行为。
+
 ### Bug 修复（按漏洞与优化审查报告）
+- **深海水藻**：`deep_sea_kelp` 头段与 `deep_sea_kelp_plant` 身体段共用 `fruit`/`abundance`/`waterlogged` 属性实例，修复头段向上生长转换为身体段时因属性实例不匹配导致的 `IllegalArgumentException` 崩溃。
 - `ModDamageTypes`：移除空的 `DeferredRegister`，统一使用数据包注册表 JSON + `ResourceKey`。
 - `OrichalcumArmorEventHandler`：现在会读取 `orichalcumArmorEffectsEnabled` 配置，关闭后不再提供减伤。
 - `ModNetwork`：`ToggleRiptidePacket` 服务端 handler 增加持有山铜三叉戟的双重校验。
@@ -62,3 +82,16 @@
 
 ### 调整
 - 删除动态光源方块：山铜头盔不再维持 `DivingLightSourceBlock` 光源。
+
+### 实体与战斗调整
+- **深海守卫（Deep Guardian）**：
+  - 锁定目标时呼唤半径 32 格内的其他深海守卫共同攻击该目标。
+  - 身边 8 格内有 5 个及以上深海守卫时，投掷伤害提高 20%。
+  - 完全免疫来自其他深海守卫的伤害。
+  - 投掷伤害固定为 **10 点**（由 `TridentEventHandler` 统一处理）。
+  - 新增战术 AI：保持 5–9 格理想距离，围绕目标游走，并通过小队冷却错开攻击节奏。
+  - 移动速度提高 50%（Guardian 基础 0.5 → 0.75）。
+  - 深海守卫三叉戟不再从创造物品栏获取；深海守卫装备该三叉戟的掉落概率改为 0，因此不再掉落。
+- **海神利刃（PoseidonsBlade）**：
+  - 不再攻击本模组的敌对生物（`Monster`）。
+  - 会无差别攻击玩家、中立/被动生物、原版敌对生物以及其他模组的敌对生物。

@@ -141,6 +141,35 @@ public class ModBlocks {
     public static final DeferredItem<BlockItem> POSEIDON_RELIEF_ITEM = BLOCK_ITEMS.registerSimpleBlockItem(
             "poseidon_relief", POSEIDON_RELIEF);
 
+    public static final DeferredBlock<DeepSeaKelpBlock> DEEP_SEA_KELP = BLOCKS.registerBlock(
+            "deep_sea_kelp",
+            DeepSeaKelpBlock::new,
+            BlockBehaviour.Properties.of()
+                    .noOcclusion()
+                    .instabreak()
+                    .pushReaction(PushReaction.DESTROY)
+                    .sound(SoundType.WET_GRASS)
+                    .noCollission()
+                    .randomTicks()
+                    .lightLevel(state -> state.getValue(DeepSeaKelpHelper.FRUIT) ? 10 : 0));
+
+    public static final DeferredBlock<DeepSeaKelpPlantBlock> DEEP_SEA_KELP_PLANT = BLOCKS.registerBlock(
+            "deep_sea_kelp_plant",
+            DeepSeaKelpPlantBlock::new,
+            BlockBehaviour.Properties.of()
+                    .noOcclusion()
+                    .instabreak()
+                    .randomTicks()
+                    .pushReaction(PushReaction.DESTROY)
+                    .sound(SoundType.WET_GRASS)
+                    .noCollission()
+                    .lightLevel(state -> state.getValue(DeepSeaKelpHelper.FRUIT) ? 10 : 0));
+
+    public static final DeferredItem<BlockItem> DEEP_SEA_KELP_ITEM = BLOCK_ITEMS.register(
+            "deep_sea_kelp",
+            () -> new BlockItem(DEEP_SEA_KELP.get(),
+                    new BlockItem.Properties().food(com.samplecat.atlantisorigins.common.item.ModFoods.DEEP_SEA_KELP)));
+
     public static final DeferredBlock<Block> SILVER_ORE = BLOCKS.registerBlock(
             "silver_ore",
             Block::new,
@@ -158,4 +187,16 @@ public class ModBlocks {
 
     public static final DeferredItem<BlockItem> DEEPSLATE_SILVER_ORE_ITEM = BLOCK_ITEMS.registerSimpleBlockItem(
             "deepslate_silver_ore", DEEPSLATE_SILVER_ORE);
+
+    public static final DeferredBlock<CaptainGuardianLightBlock> CAPTAIN_GUARDIAN_LIGHT = BLOCKS.registerBlock(
+            "captain_guardian_light",
+            CaptainGuardianLightBlock::new,
+            BlockBehaviour.Properties.of()
+                    .replaceable()
+                    .noCollission()
+                    .noOcclusion()
+                    .noLootTable()
+                    .lightLevel(state -> 15)
+                    .pushReaction(PushReaction.DESTROY)
+                    .instabreak());
 }
