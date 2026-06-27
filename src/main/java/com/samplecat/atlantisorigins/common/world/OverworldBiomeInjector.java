@@ -18,8 +18,7 @@ import net.minecraft.core.Registry;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.level.Level;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeSource;
 import net.minecraft.world.level.biome.Biomes;
@@ -27,15 +26,21 @@ import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.biome.MultiNoiseBiomeSource;
 import net.minecraft.world.level.biome.MultiNoiseBiomeSourceParameterLists;
 import net.minecraft.world.level.chunk.ChunkGenerator;
+import net.minecraft.world.level.dimension.LevelStem;
 import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.neoforge.event.level.LevelEvent;
+import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
+import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 
 /**
  * Injects the mod's custom ocean biomes into the Overworld's {@link MultiNoiseBiomeSource}
- * at runtime. This is necessary because 1.21.1's datapack registry
- * {@code multi_noise_biome_source_parameter_list} only accepts the built-in
- * {@code minecraft:overworld} / {@code minecraft:nether} presets, so custom biome
- * parameters cannot be added via JSON alone.
+ * before any {@link net.minecraft.server.level.ServerLevel} is created. This is necessary
+ * because 1.21.1's datapack registry {@code multi_noise_biome_source_parameter_list} only
+ * accepts the built-in {@code minecraft:overworld} / {@code minecraft:nether} presets, so
+ * custom biome parameters cannot be added via JSON alone.
+ *
+ * <p>Patching at {@link ServerAboutToStartEvent} ensures the modified biome source is used
+ * when Minecraft builds the Overworld {@link net.minecraft.server.level.ServerLevel}, so
+ * feature-per-step caches and chunk generator state are consistent from the start.
  */
 public class OverworldBiomeInjector {
 
@@ -67,31 +72,47 @@ public class OverworldBiomeInjector {
     );
 
     @SubscribeEvent
-    public static void onLevelLoad(LevelEvent.Load event) {
+    public static void onServerAboutToStart(ServerAboutToStartEvent event) {
         if (!Config.INJECT_OVERWORLD_BIOMES.get()) {
-            return;
-        }
-        if (!(event.getLevel() instanceof ServerLevel level)) {
-            return;
-        }
-        if (level.dimension() != Level.OVERWORLD) {
             return;
         }
         if (!PATCHED.compareAndSet(false, true)) {
             return;
         }
 
-        ChunkGenerator generator = level.getChunkSource().getGenerator();
-        if (!(generator.getBiomeSource() instanceof MultiNoiseBiomeSource source)) {
-            AtlantisOrigins.LOGGER.warn("Overworld biome source is not MultiNoiseBiomeSource; skipping injection.");
+        patchOverworld(event.getServer());
+    }
+
+    @SubscribeEvent
+    public static void onServerStopped(ServerStoppedEvent event) {
+        PATCHED.set(false);
+    }
+
+    private static void patchOverworld(MinecraftServer server) {
+        Registry<LevelStem> levelStems = server.registryAccess().registryOrThrow(Registries.LEVEL_STEM);
+        LevelStem overworldStem = levelStems.get(LevelStem.OVERWORLD);
+        if (overworldStem == null) {
+            AtlantisOrigins.LOGGER.warn("Overworld LevelStem is missing; skipping biome injection.");
             return;
         }
 
-        Registry<Biome> biomes = level.registryAccess().registryOrThrow(Registries.BIOME);
+        ChunkGenerator generator = overworldStem.generator();
+        if (!(generator.getBiomeSource() instanceof MultiNoiseBiomeSource source)) {
+            AtlantisOrigins.LOGGER.warn("Overworld generator is not using MultiNoiseBiomeSource; skipping biome injection.");
+            return;
+        }
+
+        Registry<Biome> biomes = server.registryAccess().registryOrThrow(Registries.BIOME);
         Holder<Biome> seaHolder = biomes.getHolder(GREEN_ALGAE_SEA).orElse(null);
         Holder<Biome> deepHolder = biomes.getHolder(GREEN_ALGAE_DEEP_SEA).orElse(null);
         if (seaHolder == null || deepHolder == null) {
             AtlantisOrigins.LOGGER.warn("Custom ocean biomes are missing from the biome registry; skipping injection.");
+            return;
+        }
+
+        // Avoid injecting twice if the source already contains our biomes (e.g. after a /reload).
+        if (containsBiome(source, GREEN_ALGAE_SEA) && containsBiome(source, GREEN_ALGAE_DEEP_SEA)) {
+            AtlantisOrigins.LOGGER.debug("Overworld biome source already contains custom ocean biomes.");
             return;
         }
 
@@ -111,9 +132,21 @@ public class OverworldBiomeInjector {
 
         MultiNoiseBiomeSource newSource = MultiNoiseBiomeSource.createFromList(new Climate.ParameterList<>(combined));
         replaceBiomeSource(generator, newSource);
+        // Pre-compute the per-step feature mappings with the new biome source so that
+        // the first chunk decoration does not use stale data.
         generator.refreshFeaturesPerStep();
+        generator.validate();
 
         AtlantisOrigins.LOGGER.info("Injected custom ocean biomes into the Overworld biome source.");
+    }
+
+    private static boolean containsBiome(MultiNoiseBiomeSource source, ResourceKey<Biome> key) {
+        for (Pair<Climate.ParameterPoint, Holder<Biome>> entry : getParameters(source).values()) {
+            if (entry.getSecond().is(key)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static Climate.ParameterPoint createSurfaceParameters() {

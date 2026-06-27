@@ -25,7 +25,8 @@
 - **深海水藻**：重构为继承原版 `GrowingPlantHeadBlock`/`GrowingPlantBodyBlock`，新增 `deep_sea_kelp_plant` 作为身体段，复用原版生长/连接/更新逻辑，同时保留 `fruit`/`abundance` 自定义状态与整株移除行为。
 
 ### Bug 修复（按漏洞与优化审查报告）
-- **深海水藻**：`deep_sea_kelp` 头段与 `deep_sea_kelp_plant` 身体段共用 `fruit`/`abundance`/`waterlogged` 属性实例，修复头段向上生长转换为身体段时因属性实例不匹配导致的 `IllegalArgumentException` 崩溃。
+- **深海水藻**：`deep_sea_kelp` 头段与 `deep_sea_kelp_plant` 身体段共用 `fruit`/`abundance`/`waterlogged` 属性实例，修复头段向上生长转换为身体段时因属性实例不匹配导致的 `IllegalArgumentException` 崩溃；并在转换方法中增加属性存在性校验，避免异常状态继续崩溃。
+- **主世界群系注入**：`OverworldBiomeInjector` 改为在 `ServerAboutToStartEvent` 阶段修改 `LevelStem.OVERWORLD` 的 `ChunkGenerator.biomeSource`，确保在 `ServerLevel` 创建前完成注入，避免 `featuresPerStep` 索引映射与已生成区块不一致导致的 `IndexOutOfBoundsException`。
 - `ModDamageTypes`：移除空的 `DeferredRegister`，统一使用数据包注册表 JSON + `ResourceKey`。
 - `OrichalcumArmorEventHandler`：现在会读取 `orichalcumArmorEffectsEnabled` 配置，关闭后不再提供减伤。
 - `ModNetwork`：`ToggleRiptidePacket` 服务端 handler 增加持有山铜三叉戟的双重校验。

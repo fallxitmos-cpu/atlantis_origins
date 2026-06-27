@@ -85,6 +85,9 @@ public class DeepSeaKelpPlantBlock extends GrowingPlantBodyBlock implements Simp
 
     @Override
     protected BlockState updateHeadAfterConvertedFromBody(BlockState body, BlockState head) {
+        if (!head.hasProperty(FRUIT)) {
+            return head.setValue(WATERLOGGED, body.getValue(WATERLOGGED));
+        }
         return head.setValue(WATERLOGGED, body.getValue(WATERLOGGED))
                 .setValue(FRUIT, body.getValue(FRUIT))
                 .setValue(ABUNDANCE, body.getValue(ABUNDANCE));

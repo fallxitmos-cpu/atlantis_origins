@@ -92,6 +92,9 @@ public class DeepSeaKelpBlock extends GrowingPlantHeadBlock implements SimpleWat
 
     @Override
     protected BlockState updateBodyAfterConvertedFromHead(BlockState head, BlockState body) {
+        if (!body.hasProperty(FRUIT)) {
+            return body.setValue(WATERLOGGED, head.getValue(WATERLOGGED));
+        }
         return body.setValue(WATERLOGGED, head.getValue(WATERLOGGED))
                 .setValue(FRUIT, head.getValue(FRUIT))
                 .setValue(ABUNDANCE, head.getValue(ABUNDANCE));
